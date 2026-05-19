@@ -74,7 +74,6 @@ def _format_status(status: dict) -> str:
                 ("WiFi mode", _wifi_mode(_get("wifi_mode"))),
                 ("WiFi status", _get("sta_status")),
                 ("IP address", _get("sta_ip")),
-                ("Connected SSID", _get("sta_ssid")),
                 ("mDNS", _get("mdns")),
                 ("VPN status", _get("vpn_status")),
                 ("VPN IP", _get("vpn_ip")),
