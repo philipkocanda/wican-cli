@@ -43,12 +43,37 @@ SAMPLE_CONFIG = {
 }
 
 SAMPLE_STATUS = {
-    "fw_version": "3.55",
+    "hw_version": "WiCAN Pro",
+    "fw_version": "4.48",
+    "git_version": "v4.48p",
+    "device_id": "wican_abc123",
+    "uptime": "2h 15m",
+    "batt_voltage": "13.8",
+    "wifi_mode": "1",
+    "sta_status": "Connected",
+    "sta_ip": "192.168.1.100",
+    "sta_ssid": "MyNetwork",
+    "mdns": "wican",
+    "vpn_status": "Disconnected",
+    "vpn_ip": "",
     "protocol": "auto_pid",
-    "ssid": "MyNetwork",
-    "rssi": "-42",
-    "ip": "192.168.1.100",
-    "mac": "AA:BB:CC:DD:EE:FF",
+    "can_datarate": "500",
+    "can_mode": "normal",
+    "obd_chip_status": "ready",
+    "ecu_status": "connected",
+    "sleep_status": "enabled",
+    "sleep_volt": "12.3",
+    "sleep_time": "5",
+    "periodic_wakeup": "enabled",
+    "wakeup_interval": "120",
+    "wakeup_volt": "12.5",
+    "mqtt_en": "true",
+    "mqtt_url": "10.0.1.114",
+    "mqtt_port": "1883",
+    "mqtt_status_topic": "wican/status",
+    "logger_status": "disabled",
+    "log_period": "60",
+    "imu_threshold": "5",
 }
 
 SAMPLE_AUTOPID = {
@@ -234,16 +259,28 @@ class TestCmdStatus:
     """Tests for `wican status`."""
 
     def test_status_displays_info(self, mock_config, mock_requests_get, capsys):
-        """status shows device info."""
+        """status shows device info in grouped sections."""
         mock_requests_get.return_value = _make_response(data=SAMPLE_STATUS)
 
         with patch("sys.argv", ["wican", "status"]):
             main()
 
         out = capsys.readouterr().out
-        assert "fw_version" in out
-        assert "3.55" in out
-        assert "auto_pid" in out
+        # Section headers
+        assert "Device" in out
+        assert "Network" in out
+        assert "CAN / OBD" in out
+        assert "Power" in out
+        assert "MQTT" in out
+        assert "Logging" in out
+        # Computed values
+        assert "4.48 (v4.48p)" in out
+        assert "Station" in out
+        assert "mqtt://10.0.1.114:1883" in out
+        assert "12.3V" in out
+        assert "5 min" in out
+        assert "120 min" in out
+        assert "60s" in out
 
     def test_status_json_output(self, mock_config, mock_requests_get, capsys):
         """status --json outputs valid JSON."""
@@ -254,7 +291,7 @@ class TestCmdStatus:
 
         out = capsys.readouterr().out
         parsed = json.loads(out)
-        assert parsed["fw_version"] == "3.55"
+        assert parsed["fw_version"] == "4.48"
 
     def test_status_connection_error(self, mock_config, mock_requests_get, capsys):
         """status exits on connection error."""
