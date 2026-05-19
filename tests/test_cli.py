@@ -1120,6 +1120,203 @@ class TestCmdAutopid:
         assert "SOC_BMS" in parsed
 
 
+# ── profile subcommand ────────────────────────────────────────────────────────
+
+SAMPLE_PROFILE_DEVICE = {
+    "cars": [
+        {
+            "car_model": "Hyundai: Ioniq2017",
+            "init": "ATSP6;ATS0;ATAL;ATST96;",
+            "pids": [
+                {
+                    "pid_init": "ATSH7E4;ATFCSH7E4;",
+                    "pid": "2101",
+                    "enabled": True,
+                    "parameters": [
+                        {
+                            "name": "SOC_BMS",
+                            "expression": "B09/2",
+                            "unit": "%",
+                            "class": "battery",
+                            "period": "2500",
+                            "min": "",
+                            "max": "",
+                            "type": "Default",
+                            "send_to": "",
+                        },
+                        {
+                            "name": "BATTERY_VOLTAGE",
+                            "expression": "[B18:B19]/10",
+                            "unit": "V",
+                            "class": "voltage",
+                            "period": "2500",
+                            "min": "",
+                            "max": "",
+                            "type": "Default",
+                            "send_to": "",
+                        },
+                    ],
+                }
+            ],
+        }
+    ]
+}
+
+SAMPLE_PROFILE_SOURCE = {
+    "car_model": "Hyundai: Ioniq2017",
+    "init": "ATSP6;ATS0;",
+    "pids": [
+        {
+            "pid_init": "ATSH7E4;ATFCSH7E4;",
+            "pid": "2101",
+            "enabled": True,
+            "period": "2500",
+            "parameters": {
+                "SOC_BMS": "B09/2",
+                "BATTERY_VOLTAGE": "[B18:B19]/10",
+            },
+        }
+    ],
+    "can_filters": [],
+}
+
+
+class TestCmdProfile:
+    """Tests for 'wican profile' command."""
+
+    def test_profile_show_human(self, mock_config, mock_requests_get, capsys):
+        """profile shows a human-readable summary."""
+        mock_requests_get.return_value = _make_response(data=SAMPLE_PROFILE_DEVICE)
+
+        with patch("sys.argv", ["wican", "profile"]):
+            main()
+
+        out = capsys.readouterr().out
+        assert "Hyundai: Ioniq2017" in out
+        assert "SOC_BMS" in out
+        assert "BATTERY_VOLTAGE" in out
+        assert "1 groups, 2 parameters" in out
+
+    def test_profile_show_json(self, mock_config, mock_requests_get, capsys):
+        """profile --json outputs raw JSON."""
+        mock_requests_get.return_value = _make_response(data=SAMPLE_PROFILE_DEVICE)
+
+        with patch("sys.argv", ["wican", "profile", "--json"]):
+            main()
+
+        out = capsys.readouterr().out
+        parsed = json.loads(out)
+        assert "cars" in parsed
+        assert parsed["cars"][0]["car_model"] == "Hyundai: Ioniq2017"
+
+    def test_profile_upload_device_format(
+        self, mock_config, mock_requests_get, mock_requests_post, tmp_path, capsys
+    ):
+        """profile --upload uploads a valid device-format profile."""
+        profile_file = tmp_path / "profile.json"
+        profile_file.write_text(json.dumps(SAMPLE_PROFILE_DEVICE))
+
+        mock_requests_post.return_value = _make_response()
+
+        with patch("sys.argv", ["wican", "profile", "--upload", str(profile_file), "-y"]):
+            main()
+
+        out = capsys.readouterr().out
+        assert "Uploading profile: Hyundai: Ioniq2017" in out
+        assert "uploaded successfully" in out
+        mock_requests_post.assert_called_once()
+        call_url = mock_requests_post.call_args[0][0]
+        assert "/store_car_data" in call_url
+
+    def test_profile_upload_source_format(
+        self, mock_config, mock_requests_get, mock_requests_post, tmp_path, capsys
+    ):
+        """profile --upload accepts source format (bare car, dict parameters)."""
+        profile_file = tmp_path / "profile.json"
+        profile_file.write_text(json.dumps(SAMPLE_PROFILE_SOURCE))
+
+        mock_requests_post.return_value = _make_response()
+
+        with patch("sys.argv", ["wican", "profile", "--upload", str(profile_file), "-y"]):
+            main()
+
+        out = capsys.readouterr().out
+        assert "uploaded successfully" in out
+        # Verify it was wrapped in cars array
+        posted_json = mock_requests_post.call_args[1]["json"]
+        assert "cars" in posted_json
+
+    def test_profile_upload_reboot(
+        self, mock_config, mock_requests_get, mock_requests_post, tmp_path, capsys
+    ):
+        """profile --upload --reboot uploads then reboots."""
+        profile_file = tmp_path / "profile.json"
+        profile_file.write_text(json.dumps(SAMPLE_PROFILE_DEVICE))
+
+        mock_requests_post.return_value = _make_response()
+
+        with patch(
+            "sys.argv", ["wican", "profile", "--upload", str(profile_file), "--reboot", "-y"]
+        ):
+            main()
+
+        out = capsys.readouterr().out
+        assert "uploaded successfully" in out
+        assert "Rebooting" in out
+        # Two POSTs: store_car_data + system_reboot
+        assert mock_requests_post.call_count == 2
+
+    def test_profile_upload_validation_error(self, mock_config, tmp_path, capsys):
+        """profile --upload rejects invalid profile."""
+        bad_profile = {"not_a_profile": True}
+        profile_file = tmp_path / "bad.json"
+        profile_file.write_text(json.dumps(bad_profile))
+
+        with patch("sys.argv", ["wican", "profile", "--upload", str(profile_file), "-y"]):
+            with pytest.raises(SystemExit):
+                main()
+
+        err = capsys.readouterr().err
+        assert "validation failed" in err
+
+    def test_profile_upload_missing_pid(self, mock_config, tmp_path, capsys):
+        """profile --upload rejects profile with missing pid field."""
+        bad_profile = {
+            "car_model": "Test",
+            "pids": [{"parameters": {"X": "B01"}}],
+        }
+        profile_file = tmp_path / "bad.json"
+        profile_file.write_text(json.dumps(bad_profile))
+
+        with patch("sys.argv", ["wican", "profile", "--upload", str(profile_file), "-y"]):
+            with pytest.raises(SystemExit):
+                main()
+
+        err = capsys.readouterr().err
+        assert "missing 'pid'" in err
+
+    def test_profile_upload_file_not_found(self, mock_config, capsys):
+        """profile --upload with nonexistent file exits with error."""
+        with patch("sys.argv", ["wican", "profile", "--upload", "/nonexistent/profile.json", "-y"]):
+            with pytest.raises(SystemExit):
+                main()
+
+        err = capsys.readouterr().err
+        assert "File not found" in err
+
+    def test_profile_upload_invalid_json(self, mock_config, tmp_path, capsys):
+        """profile --upload with invalid JSON exits with error."""
+        bad_file = tmp_path / "broken.json"
+        bad_file.write_text("{not valid json")
+
+        with patch("sys.argv", ["wican", "profile", "--upload", str(bad_file), "-y"]):
+            with pytest.raises(SystemExit):
+                main()
+
+        err = capsys.readouterr().err
+        assert "Invalid JSON" in err
+
+
 # ── Global flags ──────────────────────────────────────────────────────────────
 
 

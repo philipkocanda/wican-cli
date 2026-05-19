@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-05-19
+
+### Added
+
+- `wican profile` command — view current vehicle profile from device
+- `wican profile --upload FILE` — upload a profile JSON with schema validation
+- `wican profile --upload FILE --reboot` — upload and reboot to apply changes
+- Profile validation: checks structure, required fields, PID groups, and parameter format
+- Accepts both device format (`{"cars": [...]}`) and source format (bare car object with dict parameters)
+
 ## [0.3.0] - 2026-05-19
 
 ### Added

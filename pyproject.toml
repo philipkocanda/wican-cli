@@ -1,6 +1,6 @@
 [project]
 name = "wican-cli"
-version = "0.3.0"
+version = "0.4.0"
 description = "Command-line tool for managing WiCAN Pro OBD-II devices"
 readme = "README.md"
 license = "Unlicense"

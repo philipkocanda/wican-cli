@@ -8,9 +8,8 @@ All communication with the WiCAN device happens over HTTP REST endpoints:
   - GET  /obd_logs       — list OBD log databases on SD card
   - GET  /obd_logs/<file> — download a specific log database
   - GET  /autopid_data   — current AutoPID cached values
-
-Note: WiCAN devices only support HTTP (no TLS). Communication is
-typically over a local network or AP mode, not over the internet.
+  - GET  /load_auto_pid_car_data — download vehicle profile (AutoPID config)
+  - POST /store_car_data — upload vehicle profile
 """
 
 from __future__ import annotations
@@ -152,6 +151,22 @@ class WiCANClient:
     def get_autopid_values(self) -> dict:
         """Get current AutoPID cached parameter values."""
         return self._get("/autopid_data")
+
+    def get_profile(self) -> dict:
+        """Download the vehicle profile (AutoPID configuration).
+
+        Returns the device-format profile dict, typically with a top-level
+        "cars" key containing a list of car definitions.
+        """
+        return self._get("/load_auto_pid_car_data")
+
+    def store_profile(self, profile: dict) -> None:
+        """Upload a vehicle profile to the device.
+
+        The profile should be in device format (with "cars" wrapper or bare car object).
+        Does NOT trigger a reboot — call reboot() separately if needed.
+        """
+        self._post("/store_car_data", json=profile)
 
 
 def make_client(address: str, timeout: int = 10) -> WiCANClient:
