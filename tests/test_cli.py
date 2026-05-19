@@ -88,8 +88,11 @@ SAMPLE_AUTOPID = {
 @pytest.fixture
 def mock_config():
     """Mock get_wican_addresses to return a simple default config."""
-    with patch("wican_cli.cli.get_wican_addresses") as mock:
-        mock.return_value = ({"ap": "192.168.80.1"}, "ap")
+    ret = ({"ap": "192.168.80.1"}, "ap")
+    with (
+        patch("wican_cli.cli.get_wican_addresses", return_value=ret),
+        patch("wican_cli.commands._common.get_wican_addresses", return_value=ret) as mock,
+    ):
         yield mock
 
 
@@ -110,7 +113,7 @@ def mock_requests_post():
 @pytest.fixture(autouse=True)
 def _isolate_cache(tmp_path):
     """Redirect Path.home() to tmp_path so log cache doesn't pollute the real home."""
-    with patch("wican_cli.cli.Path.home", return_value=tmp_path):
+    with patch("wican_cli.commands.logs.Path.home", return_value=tmp_path):
         yield
 
 
@@ -588,7 +591,7 @@ class TestCmdLogs:
 
         logs_dir = tmp_path / "logs"
         with patch("sys.argv", ["wican", "logs", "--download"]):
-            with patch("wican_cli.cli.Path.cwd", return_value=tmp_path):
+            with patch("wican_cli.commands.logs.Path.cwd", return_value=tmp_path):
                 main()
 
         out = capsys.readouterr().out
@@ -608,7 +611,7 @@ class TestCmdLogs:
         (logs_dir / "test.db").write_bytes(b"old data")
 
         with patch("sys.argv", ["wican", "logs", "--download"]):
-            with patch("wican_cli.cli.Path.cwd", return_value=tmp_path):
+            with patch("wican_cli.commands.logs.Path.cwd", return_value=tmp_path):
                 main()
 
         out = capsys.readouterr().out
@@ -628,7 +631,7 @@ class TestCmdLogs:
         (logs_dir / "test.db").write_bytes(b"old data")
 
         with patch("sys.argv", ["wican", "logs", "--download", "--force"]):
-            with patch("wican_cli.cli.Path.cwd", return_value=tmp_path):
+            with patch("wican_cli.commands.logs.Path.cwd", return_value=tmp_path):
                 main()
 
         assert (logs_dir / "test.db").read_bytes() == b"new data"
@@ -642,7 +645,7 @@ class TestCmdLogs:
         mock_requests_get.return_value = list_resp
 
         with patch("sys.argv", ["wican", "logs", "--download"]):
-            with patch("wican_cli.cli.Path.cwd", return_value=tmp_path):
+            with patch("wican_cli.commands.logs.Path.cwd", return_value=tmp_path):
                 # download_log raises on path traversal, but _cmd_logs_download
                 # also checks containment. The WiCANError from client is caught.
                 main()
@@ -936,8 +939,11 @@ class TestGlobalFlags:
 
     def test_named_address_resolution(self, mock_requests_get, capsys):
         """--wican home resolves to configured address."""
-        with patch("wican_cli.cli.get_wican_addresses") as mock_addr:
-            mock_addr.return_value = ({"home": "192.168.1.100", "ap": "192.168.80.1"}, "home")
+        ret = ({"home": "192.168.1.100", "ap": "192.168.80.1"}, "home")
+        with (
+            patch("wican_cli.cli.get_wican_addresses", return_value=ret),
+            patch("wican_cli.commands._common.get_wican_addresses", return_value=ret),
+        ):
             mock_requests_get.return_value = _make_response(data=SAMPLE_STATUS)
 
             with patch("sys.argv", ["wican", "--wican", "home", "status"]):
