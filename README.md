@@ -4,6 +4,12 @@ Command-line tool for managing [WiCAN Pro](https://github.com/meatpiHQ/wican-fw)
 
 View and save device configuration, toggle sleep mode, switch protocol modes, query SD card logs, check AutoPID values, and reboot — all from your terminal.
 
+<img width="451" height="755" alt="Screenshot 2026-05-19 at 21 29 06" src="https://github.com/user-attachments/assets/7ad27204-0909-4520-9f78-76e15f418ee4" />
+
+<img width="425" height="523" alt="Screenshot 2026-05-19 at 21 30 26" src="https://github.com/user-attachments/assets/ca4b8e04-7c5a-432a-8e07-c54088ab632f" />
+
+
+
 ## Installation
 
 ```bash
