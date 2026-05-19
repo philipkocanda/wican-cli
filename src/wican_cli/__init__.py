@@ -1,3 +1,5 @@
 """wican-cli — Command-line tool for managing WiCAN Pro OBD-II devices."""
 
-__version__ = "0.1.0"
+from importlib.metadata import version
+
+__version__ = version("wican-cli")

@@ -1330,7 +1330,11 @@ class TestGlobalFlags:
                 main()
 
         out = capsys.readouterr().out
-        assert "0.1.0" in out
+        assert "wican" in out
+        # Version is a dotted number like "0.4.0"
+        import re
+
+        assert re.search(r"\d+\.\d+\.\d+", out)
 
     def test_custom_wican_address(self, mock_config, mock_requests_get, capsys):
         """--use passes custom address to client."""

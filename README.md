@@ -2,7 +2,7 @@
 
 Command-line tool for managing [WiCAN Pro](https://github.com/meatpiHQ/wican-fw) OBD-II WiFi devices.
 
-View and save device configuration, toggle sleep mode, switch protocol modes, query SD card logs, check AutoPID values, and reboot — all from your terminal.
+View and save device configuration, toggle sleep mode, switch protocol modes, query SD card logs, check AutoPID values, manage vehicle profiles, and reboot — all from your terminal.
 
 <img width="464" height="740" alt="Screenshot 2026-05-19 at 21 36 38" src="https://github.com/user-attachments/assets/30948c2a-ffc2-4486-b6e0-5d456c4b5a33" />
 
@@ -29,7 +29,7 @@ uv tool install wican-cli
 wican status
 
 # Or specify a device address
-wican --wican 192.168.1.100 status
+wican --use 192.168.1.100 status
 
 # Set up a config file to avoid typing the address every time
 mkdir -p ~/.config/wican-cli
@@ -40,9 +40,9 @@ wican_addresses:
 default_wican: home
 EOF
 
-# Now just use the named alias
+# Now just use the named alias (or omit --use to auto-discover)
 wican status
-wican --wican vpn status
+wican --use vpn status
 ```
 
 ## Commands
@@ -55,6 +55,7 @@ wican --wican vpn status
 | `wican protocol` | View or switch CAN protocol mode |
 | `wican logs` | List, download, or query SD card OBD log databases |
 | `wican autopid` | Show latest AutoPID cached values |
+| `wican profile` | View or upload vehicle profile (AutoPID configuration) |
 | `wican reboot` | Reboot the device |
 
 ### Examples
@@ -77,6 +78,12 @@ wican logs --query SOC_BMS --limit 20
 
 # Show AutoPID values filtered by name
 wican autopid -f tyre
+
+# View current vehicle profile
+wican profile
+
+# Upload a new vehicle profile and reboot to apply
+wican profile --upload ioniq-2017.json --reboot
 ```
 
 ## Configuration
@@ -99,13 +106,15 @@ wican_addresses:
 default_wican: home         # Which address to use by default
 ```
 
-Use `--wican <name>` to select a different address, or pass an IP/URL directly: `--wican 192.168.1.100`.
+Use `--use <name>` to select a different address, or pass an IP/URL directly: `--use 192.168.1.100`.
+
+When `--use` is omitted, the CLI probes the default address first, then falls back to other configured addresses automatically.
 
 ## Global flags
 
 | Flag | Description |
 |------|-------------|
-| `--wican ADDR` | Device address: named alias or IP/URL |
+| `--use ADDR` | Device address: named alias or IP/URL (auto-discovers if omitted) |
 | `--timeout SEC` | Request timeout in seconds (default: 10) |
 | `--json` | JSON output (available on most commands) |
 | `--version` | Show version and exit |
