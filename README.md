@@ -23,14 +23,14 @@ uv tool install wican-cli
 wican status
 
 # Or specify a device address
-wican --wican 10.0.2.86 status
+wican --wican 192.168.1.100 status
 
 # Set up a config file to avoid typing the address every time
 mkdir -p ~/.config/wican-cli
 cat > ~/.config/wican-cli/config.yaml << 'EOF'
 wican_addresses:
-  home: "10.0.2.86"
-  vpn: "192.168.3.2"
+  home: "192.168.1.100"
+  vpn: "10.8.0.50"
 default_wican: home
 EOF
 
@@ -87,10 +87,10 @@ If none is found, it defaults to `192.168.80.1` (WiCAN's built-in AP).
 
 ```yaml
 wican_addresses:
-  home: "10.0.2.86"       # Device on local LAN
-  vpn: "192.168.3.2"      # Device via VPN tunnel
-  ap: "192.168.80.1"      # Direct AP connection
-default_wican: home        # Which address to use by default
+  home: "192.168.1.100"    # Device on local LAN
+  vpn: "10.8.0.50"         # Device via VPN tunnel
+  ap: "192.168.80.1"       # Direct AP connection (WiCAN default)
+default_wican: home         # Which address to use by default
 ```
 
 Use `--wican <name>` to select a different address, or pass an IP/URL directly: `--wican 192.168.1.100`.
@@ -101,7 +101,66 @@ Use `--wican <name>` to select a different address, or pass an IP/URL directly: 
 |------|-------------|
 | `--wican ADDR` | Device address: named alias or IP/URL |
 | `--timeout SEC` | Request timeout in seconds (default: 10) |
+| `--json` | JSON output (available on most commands) |
 | `--version` | Show version and exit |
+
+## Shell completions
+
+wican-cli uses [argcomplete](https://github.com/kislyuk/argcomplete) for tab completions in bash, zsh, and fish.
+
+### Global activation (all argcomplete-enabled tools)
+
+```bash
+# bash (add to ~/.bashrc)
+activate-global-python-argcomplete
+
+# zsh (add to ~/.zshrc)
+autoload -U bashcompinit && bashcompinit
+activate-global-python-argcomplete
+
+# fish
+register-python-argcomplete --shell fish wican | source
+```
+
+### Per-command activation
+
+```bash
+# bash (add to ~/.bashrc)
+eval "$(register-python-argcomplete wican)"
+
+# zsh (add to ~/.zshrc)
+autoload -U bashcompinit && bashcompinit
+eval "$(register-python-argcomplete wican)"
+
+# fish (add to ~/.config/fish/completions/wican.fish)
+register-python-argcomplete --shell fish wican | source
+```
+
+## Local development
+
+Prerequisites: Python 3.10+ and [uv](https://docs.astral.sh/uv/).
+
+```bash
+# Clone the repository
+git clone https://github.com/philipkocanda/wican-cli.git
+cd wican-cli
+
+# Install dependencies (including dev extras)
+uv sync --extra dev
+
+# Run the CLI locally
+uv run wican --help
+
+# Run tests
+uv run pytest
+
+# Run tests with coverage
+uv run pytest --cov
+
+# Lint and format
+uv run ruff check .
+uv run ruff format .
+```
 
 ## What is WiCAN?
 

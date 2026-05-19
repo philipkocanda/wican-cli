@@ -10,20 +10,22 @@ from __future__ import annotations
 import copy
 
 # Fields that contain sensitive credentials.
-REDACT_KEYS = frozenset({
-    "sta_ssid",
-    "sta_pass",
-    "ap_pass",
-    "ble_pass",
-    "batt_alert_ssid",
-    "batt_alert_pass",
-    "batt_mqtt_pass",
-    "batt_mqtt_user",
-    "mqtt_pass",
-    "mqtt_user",
-    "home_password",
-    "drive_password",
-})
+REDACT_KEYS = frozenset(
+    {
+        "sta_ssid",
+        "sta_pass",
+        "ap_pass",
+        "ble_pass",
+        "batt_alert_ssid",
+        "batt_alert_pass",
+        "batt_mqtt_pass",
+        "batt_mqtt_user",
+        "mqtt_pass",
+        "mqtt_user",
+        "home_password",
+        "drive_password",
+    }
+)
 
 REDACTED_PLACEHOLDER = "*** REDACTED ***"
 

@@ -13,6 +13,8 @@ import tempfile
 from datetime import datetime
 from pathlib import Path
 
+import argcomplete
+
 from wican_cli.client import WiCANClient, WiCANError, handle_client_error, make_client
 from wican_cli.config import get_wican_addresses
 from wican_cli.redact import redact_config
@@ -214,8 +216,7 @@ def cmd_config(args: argparse.Namespace) -> None:
             output = config
             suffix = ""
             _warn(
-                "Saving config with plaintext credentials. "
-                "Use --redact to strip sensitive fields."
+                "Saving config with plaintext credentials. Use --redact to strip sensitive fields."
             )
         with open(path, "w") as f:
             json.dump(output, f, indent=2)
@@ -257,16 +258,25 @@ def cmd_sleep(args: argparse.Namespace) -> None:
     if args.no_wakeup:
         changes["periodic_wakeup"] = "disable"
 
-    # Display current status
-    print("Sleep configuration:")
-    max_label = max(len(v) for v in SLEEP_LABELS.values())
-    for key in SLEEP_KEYS:
-        label = SLEEP_LABELS.get(key, key)
-        current = flat.get(key, "?")
-        if key in changes and changes[key] != str(current):
-            print(f"  {label:<{max_label}}  {current} -> {changes[key]}")
-        else:
-            print(f"  {label:<{max_label}}  {current}")
+    # JSON output mode
+    if args.json:
+        sleep_data = {k: flat.get(k, None) for k in SLEEP_KEYS}
+        if changes:
+            sleep_data["pending_changes"] = changes
+        print(json.dumps(sleep_data, indent=2))
+        if not changes:
+            return
+    else:
+        # Display current status
+        print("Sleep configuration:")
+        max_label = max(len(v) for v in SLEEP_LABELS.values())
+        for key in SLEEP_KEYS:
+            label = SLEEP_LABELS.get(key, key)
+            current = flat.get(key, "?")
+            if key in changes and changes[key] != str(current):
+                print(f"  {label:<{max_label}}  {current} -> {changes[key]}")
+            else:
+                print(f"  {label:<{max_label}}  {current}")
 
     if not changes:
         return
@@ -274,16 +284,19 @@ def cmd_sleep(args: argparse.Namespace) -> None:
     # Check if anything actually changed
     effective_changes = {k: v for k, v in changes.items() if str(flat.get(k)) != v}
     if not effective_changes:
-        print("\nNo changes needed — config already matches.")
+        if not args.json:
+            print("\nNo changes needed — config already matches.")
         return
 
     if args.dry_run:
-        print("\n[dry-run] Would apply changes and reboot device.")
+        if not args.json:
+            print("\n[dry-run] Would apply changes and reboot device.")
         return
 
     # Confirm and apply
     base_url = _resolve_address(args.wican)
-    print(f"\nSaving config will reboot the device ({base_url})")
+    if not args.json:
+        print(f"\nSaving config will reboot the device ({base_url})")
     if not args.yes and not _confirm("Apply changes?"):
         print("Aborted.")
         return
@@ -297,7 +310,8 @@ def cmd_sleep(args: argparse.Namespace) -> None:
     except WiCANError as e:
         handle_client_error(e)
         return
-    print("Config saved. Device is rebooting...")
+    if not args.json:
+        print("Config saved. Device is rebooting...")
 
 
 def cmd_status(args: argparse.Namespace) -> None:
@@ -348,10 +362,18 @@ def cmd_protocol(args: argparse.Namespace) -> None:
 
     if not args.set:
         # Display current protocol
-        print(f"Current protocol: {current}")
-        if current in PROTOCOLS:
-            print(f"  {PROTOCOLS[current]}")
-        print(f"\nAvailable: {', '.join(PROTOCOLS.keys())}")
+        if args.json:
+            data = {
+                "current": current,
+                "description": PROTOCOLS.get(current, "unknown"),
+                "available": list(PROTOCOLS.keys()),
+            }
+            print(json.dumps(data, indent=2))
+        else:
+            print(f"Current protocol: {current}")
+            if current in PROTOCOLS:
+                print(f"  {PROTOCOLS[current]}")
+            print(f"\nAvailable: {', '.join(PROTOCOLS.keys())}")
         return
 
     target = args.set.lower()
@@ -361,7 +383,10 @@ def cmd_protocol(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     if target == current:
-        print(f"Already in {target} mode — no change needed.")
+        if args.json:
+            print(json.dumps({"status": "no_change", "protocol": current}))
+        else:
+            print(f"Already in {target} mode — no change needed.")
         return
 
     # Build changes
@@ -374,25 +399,30 @@ def cmd_protocol(args: argparse.Namespace) -> None:
     if args.can_mode:
         changes["can_mode"] = args.can_mode
 
-    print(f"Switching protocol: {current} -> {target}")
-    print(f"  {PROTOCOLS[target]}")
-    print()
-    print("  Note: Protocols are mutually exclusive — only one can be active.")
-    print("  Device will reboot to apply the change.")
-    print()
+    if not args.json:
+        print(f"Switching protocol: {current} -> {target}")
+        print(f"  {PROTOCOLS[target]}")
+        print()
+        print("  Note: Protocols are mutually exclusive — only one can be active.")
+        print("  Device will reboot to apply the change.")
+        print()
 
-    # Show diff
-    print("Changes:")
-    for key, new_val in changes.items():
-        old_val = flat.get(key, "")
-        if str(old_val) != new_val:
-            print(f"  {key}: {old_val} -> {new_val}")
+        # Show diff
+        print("Changes:")
+        for key, new_val in changes.items():
+            old_val = flat.get(key, "")
+            if str(old_val) != new_val:
+                print(f"  {key}: {old_val} -> {new_val}")
 
     if args.dry_run:
-        print("\n(dry run — no changes applied)")
+        if args.json:
+            print(json.dumps({"status": "dry_run", "changes": changes}))
+        else:
+            print("\n(dry run — no changes applied)")
         return
 
-    print()
+    if not args.json:
+        print()
     if not args.yes and not _confirm("Apply and reboot?"):
         print("Cancelled.")
         return
@@ -401,13 +431,17 @@ def cmd_protocol(args: argparse.Namespace) -> None:
     for key, val in changes.items():
         flat[key] = val
 
-    print("Storing config...", end=" ", flush=True)
+    if not args.json:
+        print("Storing config...", end=" ", flush=True)
     try:
         client.store_config(config)
     except WiCANError as e:
         handle_client_error(e)
         return
-    print("device is rebooting.")
+    if args.json:
+        print(json.dumps({"status": "applied", "protocol": target}))
+    else:
+        print("device is rebooting.")
 
 
 def cmd_logs(args: argparse.Namespace) -> None:
@@ -649,19 +683,21 @@ def main() -> None:
         help=f"Filter to section: {', '.join(CONFIG_SECTIONS.keys())}",
     )
     p_config.add_argument("--json", action="store_true", help="Raw JSON output")
-    p_config.add_argument(
-        "--save", action="store_true", help="Save snapshot to configs/ directory"
-    )
+    p_config.add_argument("--save", action="store_true", help="Save snapshot to configs/ directory")
     p_config.add_argument(
         "--redact", action="store_true", help="Redact credentials in saved snapshot"
     )
     p_config.add_argument(
-        "--output-dir", "-o", metavar="DIR", help="Directory for saved snapshots (default: ./configs)"
+        "--output-dir",
+        "-o",
+        metavar="DIR",
+        help="Directory for saved snapshots (default: ./configs)",
     )
     p_config.set_defaults(func=cmd_config)
 
     # ── sleep ──
     p_sleep = sub.add_parser("sleep", help="View or modify sleep settings")
+    p_sleep.add_argument("--json", action="store_true", help="JSON output")
     grp = p_sleep.add_mutually_exclusive_group()
     grp.add_argument("--enable", action="store_true", help="Enable sleep mode")
     grp.add_argument("--disable", action="store_true", help="Disable sleep mode")
@@ -670,7 +706,10 @@ def main() -> None:
     )
     p_sleep.add_argument("--time", type=_positive_int, metavar="MIN", help="Sleep delay in minutes")
     p_sleep.add_argument(
-        "--wakeup-interval", type=_positive_int, metavar="MIN", help="Periodic wakeup interval in minutes"
+        "--wakeup-interval",
+        type=_positive_int,
+        metavar="MIN",
+        help="Periodic wakeup interval in minutes",
     )
     p_sleep.add_argument("--no-wakeup", action="store_true", help="Disable periodic wakeup")
     p_sleep.add_argument("--dry-run", action="store_true", help="Preview changes without applying")
@@ -693,9 +732,7 @@ def main() -> None:
         "--download", action="store_true", help="Download log databases to logs/ directory"
     )
     p_logs.add_argument("--db", metavar="FILE", help="Specific database filename")
-    p_logs.add_argument(
-        "--force", action="store_true", help="Overwrite existing files on download"
-    )
+    p_logs.add_argument("--force", action="store_true", help="Overwrite existing files on download")
     p_logs.add_argument("--params", action="store_true", help="List all logged parameters")
     p_logs.add_argument("--query", metavar="PARAM", help="Query a parameter (e.g. SOC_BMS)")
     p_logs.add_argument(
@@ -706,12 +743,11 @@ def main() -> None:
 
     # ── protocol ──
     p_proto = sub.add_parser("protocol", help="View or switch CAN protocol mode")
+    p_proto.add_argument("--json", action="store_true", help="JSON output")
     p_proto.add_argument(
         "--set", metavar="MODE", help=f"Switch to protocol: {', '.join(PROTOCOLS.keys())}"
     )
-    p_proto.add_argument(
-        "--port", type=int, metavar="PORT", help="TCP/UDP port number"
-    )
+    p_proto.add_argument("--port", type=int, metavar="PORT", help="TCP/UDP port number")
     p_proto.add_argument("--port-type", choices=["tcp", "udp"], help="Port type: tcp or udp")
     p_proto.add_argument(
         "--can-mode",
@@ -727,11 +763,10 @@ def main() -> None:
         "autopid", aliases=["pids"], help="Show latest AutoPID cached values"
     )
     p_autopid.add_argument("--json", action="store_true", help="Raw JSON output")
-    p_autopid.add_argument(
-        "--filter", "-f", metavar="PATTERN", help="Filter parameters by name"
-    )
+    p_autopid.add_argument("--filter", "-f", metavar="PATTERN", help="Filter parameters by name")
     p_autopid.set_defaults(func=cmd_autopid)
 
+    argcomplete.autocomplete(parser)
     args = parser.parse_args()
     args.func(args)
 

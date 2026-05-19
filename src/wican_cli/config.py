@@ -52,7 +52,9 @@ def load_config() -> dict:
     if data is None:
         return {}
     if not isinstance(data, dict):
-        raise ValueError(f"Invalid config format in {path}: expected a YAML mapping, got {type(data).__name__}")
+        raise ValueError(
+            f"Invalid config format in {path}: expected a YAML mapping, got {type(data).__name__}"
+        )
     return data
 
 

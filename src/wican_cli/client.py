@@ -68,9 +68,7 @@ class WiCANClient:
         except requests.Timeout as e:
             raise RequestTimeout(f"Timeout connecting to {self.base_url}") from e
         except requests.HTTPError as e:
-            raise DeviceError(
-                f"Device returned error: {e.response.status_code} on {path}"
-            ) from e
+            raise DeviceError(f"Device returned error: {e.response.status_code} on {path}") from e
 
     def _post(
         self,
@@ -102,9 +100,7 @@ class WiCANClient:
                 return None
             raise RequestTimeout(f"Timeout on POST to {self.base_url}{path}") from e
         except requests.HTTPError as e:
-            raise DeviceError(
-                f"Device returned error: {e.response.status_code} on {path}"
-            ) from e
+            raise DeviceError(f"Device returned error: {e.response.status_code} on {path}") from e
 
     def get_config(self) -> dict:
         """Download the full device configuration."""
