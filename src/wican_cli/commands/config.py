@@ -57,6 +57,11 @@ CONFIG_SECTIONS = {
         "port",
         "port_type",
     ],
+    "can": [
+        "can_datarate",
+        "can_mode",
+        "protocol",
+    ],
 }
 
 
@@ -130,9 +135,7 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     )
     p.add_argument("--json", action="store_true", help="Raw JSON output")
     p.add_argument("--save", action="store_true", help="Save snapshot to configs/ directory")
-    p.add_argument(
-        "--redact", action="store_true", help="Redact credentials in saved snapshot"
-    )
+    p.add_argument("--redact", action="store_true", help="Redact credentials in saved snapshot")
     p.add_argument(
         "--output-dir",
         "-o",

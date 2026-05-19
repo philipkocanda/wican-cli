@@ -122,9 +122,7 @@ def test_download_log_url_encodes_filename():
         result = client.download_log("log 2026-01-01.db")
 
     # Space should be encoded as %20
-    mock_get.assert_called_once_with(
-        "http://192.168.80.1/obd_logs/log%202026-01-01.db", timeout=15
-    )
+    mock_get.assert_called_once_with("http://192.168.80.1/obd_logs/log%202026-01-01.db", timeout=15)
     assert result == b"data"
 
 
@@ -169,7 +167,14 @@ def test_list_logs_returns_raw_response():
     client = WiCANClient("http://192.168.80.1", timeout=5)
     api_response = {
         "current_db": "obd_log.db",
-        "databases": [{"filename": "obd_log.db", "created": "2026-01-01T00:00:00", "size": 1024, "status": "active"}],
+        "databases": [
+            {
+                "filename": "obd_log.db",
+                "created": "2026-01-01T00:00:00",
+                "size": 1024,
+                "status": "active",
+            }
+        ],
     }
 
     with patch.object(client, "_get", return_value=api_response):

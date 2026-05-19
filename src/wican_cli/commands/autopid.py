@@ -29,6 +29,9 @@ def cmd_autopid(args: argparse.Namespace) -> None:
         if not values:
             print("No AutoPID values available.")
         else:
+            count = len(values)
+            suffix = " (filtered)" if args.filter else ""
+            print(f"AutoPID data — {count} parameters{suffix}")
             max_key = max(len(k) for k in values)
             for key, value in sorted(values.items()):
                 print(f"  {key:<{max_key}}  {value}")
@@ -36,9 +39,7 @@ def cmd_autopid(args: argparse.Namespace) -> None:
 
 def register(subparsers: argparse._SubParsersAction) -> None:
     """Register the autopid subcommand."""
-    p = subparsers.add_parser(
-        "autopid", aliases=["pids"], help="Show latest AutoPID cached values"
-    )
+    p = subparsers.add_parser("autopid", aliases=["pids"], help="Show latest AutoPID cached values")
     p.add_argument("--json", action="store_true", help="Raw JSON output")
     p.add_argument("--filter", "-f", metavar="PATTERN", help="Filter parameters by name")
     p.set_defaults(func=cmd_autopid)

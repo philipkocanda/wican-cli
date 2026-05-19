@@ -18,6 +18,27 @@ PROTOCOLS = {
     "realdash66": "RealDash Protocol 66 — RealDash CAN connection",
 }
 
+# Aliases for convenience (alias -> canonical name).
+PROTOCOL_ALIASES = {
+    "autopid": "auto_pid",
+    "realdash": "realdash66",
+}
+
+# Per-protocol warnings shown when switching away from or to a protocol.
+PROTOCOL_WARNINGS = {
+    "auto_pid": "AutoPID will STOP — no more automated MQTT/Home Assistant data.",
+    "slcan": "SLCAN uses a raw TCP socket (default port 3333).",
+    "elm327": "ELM327 exposes an OBD-II terminal (TCP or UDP, default port 35000).",
+    "savvycan": "SavvyCAN GVRET mode — only compatible with SavvyCAN client.",
+    "realdash66": "RealDash Protocol 66 — only compatible with RealDash app.",
+}
+
+
+def _resolve_protocol(name: str) -> str:
+    """Resolve a protocol name or alias to its canonical name."""
+    lower = name.lower()
+    return PROTOCOL_ALIASES.get(lower, lower)
+
 
 def cmd_protocol(args: argparse.Namespace) -> None:
     """View or switch CAN protocol mode."""
@@ -38,19 +59,35 @@ def cmd_protocol(args: argparse.Namespace) -> None:
                 "current": current,
                 "description": PROTOCOLS.get(current, "unknown"),
                 "available": list(PROTOCOLS.keys()),
+                "aliases": PROTOCOL_ALIASES,
             }
             print(json.dumps(data, indent=2))
         else:
             print(f"Current protocol: {current}")
             if current in PROTOCOLS:
                 print(f"  {PROTOCOLS[current]}")
-            print(f"\nAvailable: {', '.join(PROTOCOLS.keys())}")
+            print()
+            print("Available protocols:")
+            for proto, desc in PROTOCOLS.items():
+                marker = " *" if proto == current else "  "
+                port_info = (
+                    f"  (port {flat.get('port', '?')}/{flat.get('port_type', '?')})"
+                    if proto == current
+                    else ""
+                )
+                print(f"  {marker} {proto:<12} {desc}{port_info}")
+            aliases_str = ", ".join(f"{a}->{c}" for a, c in PROTOCOL_ALIASES.items())
+            print(f"\n  Aliases: {aliases_str}")
+            if current in PROTOCOLS:
+                can_mode = flat.get("can_mode", "?")
+                print(f"\n  CAN mode: {can_mode}")
         return
 
-    target = args.set.lower()
+    target = _resolve_protocol(args.set)
     if target not in PROTOCOLS:
-        print(f"ERROR: Unknown protocol '{target}'", file=sys.stderr)
-        print(f"  Available: {', '.join(PROTOCOLS.keys())}", file=sys.stderr)
+        print(f"ERROR: Unknown protocol '{args.set}'", file=sys.stderr)
+        all_names = list(PROTOCOLS.keys()) + list(PROTOCOL_ALIASES.keys())
+        print(f"  Available: {', '.join(all_names)}", file=sys.stderr)
         sys.exit(1)
 
     if target == current:
@@ -73,6 +110,12 @@ def cmd_protocol(args: argparse.Namespace) -> None:
     if not args.json:
         print(f"Switching protocol: {current} -> {target}")
         print(f"  {PROTOCOLS[target]}")
+        print()
+        # Show per-protocol warnings
+        if current in PROTOCOL_WARNINGS:
+            print(f"  ⚠ Leaving {current}: {PROTOCOL_WARNINGS[current]}")
+        if target in PROTOCOL_WARNINGS:
+            print(f"  → Entering {target}: {PROTOCOL_WARNINGS[target]}")
         print()
         print("  Note: Protocols are mutually exclusive — only one can be active.")
         print("  Device will reboot to apply the change.")
@@ -120,7 +163,10 @@ def register(subparsers: argparse._SubParsersAction) -> None:
     p = subparsers.add_parser("protocol", help="View or switch CAN protocol mode")
     p.add_argument("--json", action="store_true", help="JSON output")
     p.add_argument(
-        "--set", metavar="MODE", help=f"Switch to protocol: {', '.join(PROTOCOLS.keys())}"
+        "--set",
+        metavar="MODE",
+        help="Switch to protocol: "
+        f"{', '.join(PROTOCOLS.keys())} (aliases: {', '.join(PROTOCOL_ALIASES.keys())})",
     )
     p.add_argument("--port", type=int, metavar="PORT", help="TCP/UDP port number")
     p.add_argument("--port-type", choices=["tcp", "udp"], help="Port type: tcp or udp")

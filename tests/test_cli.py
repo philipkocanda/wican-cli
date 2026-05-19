@@ -526,6 +526,60 @@ class TestCmdProtocol:
         parsed = json.loads(out)
         assert parsed["status"] == "no_change"
 
+    def test_protocol_alias_autopid(self, mock_config, mock_requests_get, capsys):
+        """protocol --set autopid resolves to auto_pid."""
+        mock_requests_get.return_value = _make_response(data=SAMPLE_CONFIG.copy())
+
+        with patch("sys.argv", ["wican", "protocol", "--set", "autopid"]):
+            main()
+
+        out = capsys.readouterr().out
+        # autopid -> auto_pid, which is already the current protocol
+        assert "no change" in out.lower()
+
+    def test_protocol_alias_realdash(self, mock_config, mock_requests_get, capsys):
+        """protocol --set realdash resolves to realdash66 and shows dry-run."""
+        mock_requests_get.return_value = _make_response(data=SAMPLE_CONFIG.copy())
+
+        with patch("sys.argv", ["wican", "protocol", "--set", "realdash", "--dry-run"]):
+            main()
+
+        out = capsys.readouterr().out
+        assert "realdash66" in out.lower()
+
+    def test_protocol_display_shows_marker(self, mock_config, mock_requests_get, capsys):
+        """protocol display shows * marker on active protocol."""
+        mock_requests_get.return_value = _make_response(data=SAMPLE_CONFIG.copy())
+
+        with patch("sys.argv", ["wican", "protocol"]):
+            main()
+
+        out = capsys.readouterr().out
+        # Active protocol should have a marker
+        assert "* auto_pid" in out or "*  auto_pid" in out
+
+    def test_protocol_display_shows_aliases(self, mock_config, mock_requests_get, capsys):
+        """protocol display lists aliases."""
+        mock_requests_get.return_value = _make_response(data=SAMPLE_CONFIG.copy())
+
+        with patch("sys.argv", ["wican", "protocol"]):
+            main()
+
+        out = capsys.readouterr().out
+        assert "autopid" in out
+        assert "realdash" in out
+
+    def test_protocol_switch_shows_warnings(self, mock_config, mock_requests_get, capsys):
+        """protocol --set elm327 --dry-run shows per-protocol warnings."""
+        mock_requests_get.return_value = _make_response(data=SAMPLE_CONFIG.copy())
+
+        with patch("sys.argv", ["wican", "protocol", "--set", "elm327", "--dry-run"]):
+            main()
+
+        out = capsys.readouterr().out
+        # Should warn about leaving auto_pid
+        assert "AutoPID will STOP" in out
+
 
 # ── logs subcommand ───────────────────────────────────────────────────────────
 
@@ -535,13 +589,25 @@ class TestCmdLogs:
 
     def test_logs_list(self, mock_config, mock_requests_get, capsys):
         """logs lists available files."""
-        mock_requests_get.return_value = _make_response(data={
-            "current_db": "obd_2026-02.db",
-            "databases": [
-                {"filename": "obd_2026-01.db", "created": "2026-01-01T00:00:00", "size": 1024, "status": "closed"},
-                {"filename": "obd_2026-02.db", "created": "2026-02-01T00:00:00", "size": 512, "status": "active"},
-            ],
-        })
+        mock_requests_get.return_value = _make_response(
+            data={
+                "current_db": "obd_2026-02.db",
+                "databases": [
+                    {
+                        "filename": "obd_2026-01.db",
+                        "created": "2026-01-01T00:00:00",
+                        "size": 1024,
+                        "status": "closed",
+                    },
+                    {
+                        "filename": "obd_2026-02.db",
+                        "created": "2026-02-01T00:00:00",
+                        "size": 512,
+                        "status": "active",
+                    },
+                ],
+            }
+        )
 
         with patch("sys.argv", ["wican", "logs"]):
             main()
@@ -549,14 +615,29 @@ class TestCmdLogs:
         out = capsys.readouterr().out
         assert "obd_2026-01.db" in out
         assert "obd_2026-02.db" in out
+        # Human-readable sizes
+        assert "1.0 KB" in out
+        assert "512 B" in out
+        # Active marker on current_db
+        assert "(active)" in out
 
     def test_logs_list_json(self, mock_config, mock_requests_get, capsys):
         """logs --json outputs full response as JSON."""
         response_data = {
             "current_db": "obd_2026-02.db",
             "databases": [
-                {"filename": "obd_2026-01.db", "created": "2026-01-01T00:00:00", "size": 1024, "status": "closed"},
-                {"filename": "obd_2026-02.db", "created": "2026-02-01T00:00:00", "size": 512, "status": "active"},
+                {
+                    "filename": "obd_2026-01.db",
+                    "created": "2026-01-01T00:00:00",
+                    "size": 1024,
+                    "status": "closed",
+                },
+                {
+                    "filename": "obd_2026-02.db",
+                    "created": "2026-02-01T00:00:00",
+                    "size": 512,
+                    "status": "active",
+                },
             ],
         }
         mock_requests_get.return_value = _make_response(data=response_data)
@@ -581,10 +662,19 @@ class TestCmdLogs:
     def test_logs_download(self, mock_config, mock_requests_get, capsys, tmp_path):
         """logs --download downloads files to logs/ directory."""
         # First call: list_logs, second call: download_log
-        list_resp = _make_response(data={
-            "current_db": "test.db",
-            "databases": [{"filename": "test.db", "created": "2026-01-01T00:00:00", "size": 100, "status": "active"}],
-        })
+        list_resp = _make_response(
+            data={
+                "current_db": "test.db",
+                "databases": [
+                    {
+                        "filename": "test.db",
+                        "created": "2026-01-01T00:00:00",
+                        "size": 100,
+                        "status": "active",
+                    }
+                ],
+            }
+        )
         download_resp = _make_response(content=b"sqlite3 data here")
 
         mock_requests_get.side_effect = [list_resp, download_resp]
@@ -600,10 +690,19 @@ class TestCmdLogs:
 
     def test_logs_download_skip_existing(self, mock_config, mock_requests_get, capsys, tmp_path):
         """logs --download skips existing files without --force."""
-        list_resp = _make_response(data={
-            "current_db": "test.db",
-            "databases": [{"filename": "test.db", "created": "2026-01-01T00:00:00", "size": 100, "status": "active"}],
-        })
+        list_resp = _make_response(
+            data={
+                "current_db": "test.db",
+                "databases": [
+                    {
+                        "filename": "test.db",
+                        "created": "2026-01-01T00:00:00",
+                        "size": 100,
+                        "status": "active",
+                    }
+                ],
+            }
+        )
         mock_requests_get.return_value = list_resp
 
         logs_dir = tmp_path / "logs"
@@ -619,10 +718,19 @@ class TestCmdLogs:
 
     def test_logs_download_force(self, mock_config, mock_requests_get, capsys, tmp_path):
         """logs --download --force overwrites existing files."""
-        list_resp = _make_response(data={
-            "current_db": "test.db",
-            "databases": [{"filename": "test.db", "created": "2026-01-01T00:00:00", "size": 100, "status": "active"}],
-        })
+        list_resp = _make_response(
+            data={
+                "current_db": "test.db",
+                "databases": [
+                    {
+                        "filename": "test.db",
+                        "created": "2026-01-01T00:00:00",
+                        "size": 100,
+                        "status": "active",
+                    }
+                ],
+            }
+        )
         download_resp = _make_response(content=b"new data")
         mock_requests_get.side_effect = [list_resp, download_resp]
 
@@ -638,10 +746,19 @@ class TestCmdLogs:
 
     def test_logs_download_unsafe_path(self, mock_config, mock_requests_get, capsys, tmp_path):
         """logs --download rejects filenames with path traversal."""
-        list_resp = _make_response(data={
-            "current_db": "../evil.db",
-            "databases": [{"filename": "../evil.db", "created": "2026-01-01T00:00:00", "size": 100, "status": "active"}],
-        })
+        list_resp = _make_response(
+            data={
+                "current_db": "../evil.db",
+                "databases": [
+                    {
+                        "filename": "../evil.db",
+                        "created": "2026-01-01T00:00:00",
+                        "size": 100,
+                        "status": "active",
+                    }
+                ],
+            }
+        )
         mock_requests_get.return_value = list_resp
 
         with patch("sys.argv", ["wican", "logs", "--download"]):
@@ -659,10 +776,19 @@ class TestCmdLogs:
         # Create a real SQLite DB with the firmware schema
         db_bytes = _make_test_db([(1735689600, 78.0), (1735689660, 79.0)])
 
-        list_resp = _make_response(data={
-            "current_db": "obd.db",
-            "databases": [{"filename": "obd.db", "created": "2026-01-01T00:00:00", "size": 4096, "status": "active"}],
-        })
+        list_resp = _make_response(
+            data={
+                "current_db": "obd.db",
+                "databases": [
+                    {
+                        "filename": "obd.db",
+                        "created": "2026-01-01T00:00:00",
+                        "size": 4096,
+                        "status": "active",
+                    }
+                ],
+            }
+        )
         download_resp = _make_response(content=db_bytes)
         mock_requests_get.side_effect = [list_resp, download_resp]
 
@@ -677,10 +803,19 @@ class TestCmdLogs:
         """logs --query --json outputs structured JSON."""
         db_bytes = _make_test_db([(1735689600, 78.0)])
 
-        list_resp = _make_response(data={
-            "current_db": "obd.db",
-            "databases": [{"filename": "obd.db", "created": "2026-01-01T00:00:00", "size": 4096, "status": "active"}],
-        })
+        list_resp = _make_response(
+            data={
+                "current_db": "obd.db",
+                "databases": [
+                    {
+                        "filename": "obd.db",
+                        "created": "2026-01-01T00:00:00",
+                        "size": 4096,
+                        "status": "active",
+                    }
+                ],
+            }
+        )
         download_resp = _make_response(content=db_bytes)
         mock_requests_get.side_effect = [list_resp, download_resp]
 
@@ -696,10 +831,19 @@ class TestCmdLogs:
         """logs --query with unknown param shows no data message."""
         db_bytes = _make_test_db([(1735689600, 78.0)])
 
-        list_resp = _make_response(data={
-            "current_db": "obd.db",
-            "databases": [{"filename": "obd.db", "created": "2026-01-01T00:00:00", "size": 4096, "status": "active"}],
-        })
+        list_resp = _make_response(
+            data={
+                "current_db": "obd.db",
+                "databases": [
+                    {
+                        "filename": "obd.db",
+                        "created": "2026-01-01T00:00:00",
+                        "size": 4096,
+                        "status": "active",
+                    }
+                ],
+            }
+        )
         download_resp = _make_response(content=db_bytes)
         mock_requests_get.side_effect = [list_resp, download_resp]
 
@@ -716,10 +860,19 @@ class TestCmdLogs:
             extra_params=[("Battery_Voltage", 356.2), ("Speed", 60.0)],
         )
 
-        list_resp = _make_response(data={
-            "current_db": "obd.db",
-            "databases": [{"filename": "obd.db", "created": "2026-01-01T00:00:00", "size": 4096, "status": "active"}],
-        })
+        list_resp = _make_response(
+            data={
+                "current_db": "obd.db",
+                "databases": [
+                    {
+                        "filename": "obd.db",
+                        "created": "2026-01-01T00:00:00",
+                        "size": 4096,
+                        "status": "active",
+                    }
+                ],
+            }
+        )
         download_resp = _make_response(content=db_bytes)
         mock_requests_get.side_effect = [list_resp, download_resp]
 
@@ -734,10 +887,19 @@ class TestCmdLogs:
         """logs --params --json outputs parameter list as JSON."""
         db_bytes = _make_test_db([(1735689600, 78.0)])
 
-        list_resp = _make_response(data={
-            "current_db": "obd.db",
-            "databases": [{"filename": "obd.db", "created": "2026-01-01T00:00:00", "size": 4096, "status": "active"}],
-        })
+        list_resp = _make_response(
+            data={
+                "current_db": "obd.db",
+                "databases": [
+                    {
+                        "filename": "obd.db",
+                        "created": "2026-01-01T00:00:00",
+                        "size": 4096,
+                        "status": "active",
+                    }
+                ],
+            }
+        )
         download_resp = _make_response(content=db_bytes)
         mock_requests_get.side_effect = [list_resp, download_resp]
 
@@ -753,10 +915,19 @@ class TestCmdLogs:
         rows = [(1735689600 + i * 60, 70.0 + i) for i in range(20)]
         db_bytes = _make_test_db(rows)
 
-        list_resp = _make_response(data={
-            "current_db": "obd.db",
-            "databases": [{"filename": "obd.db", "created": "2026-01-01T00:00:00", "size": 4096, "status": "active"}],
-        })
+        list_resp = _make_response(
+            data={
+                "current_db": "obd.db",
+                "databases": [
+                    {
+                        "filename": "obd.db",
+                        "created": "2026-01-01T00:00:00",
+                        "size": 4096,
+                        "status": "active",
+                    }
+                ],
+            }
+        )
         download_resp = _make_response(content=db_bytes)
         mock_requests_get.side_effect = [list_resp, download_resp]
 
@@ -768,10 +939,19 @@ class TestCmdLogs:
 
     def test_logs_db_not_found(self, mock_config, mock_requests_get, capsys):
         """logs --download --db nonexistent.db exits with error."""
-        list_resp = _make_response(data={
-            "current_db": "real.db",
-            "databases": [{"filename": "real.db", "created": "2026-01-01T00:00:00", "size": 4096, "status": "active"}],
-        })
+        list_resp = _make_response(
+            data={
+                "current_db": "real.db",
+                "databases": [
+                    {
+                        "filename": "real.db",
+                        "created": "2026-01-01T00:00:00",
+                        "size": 4096,
+                        "status": "active",
+                    }
+                ],
+            }
+        )
         mock_requests_get.return_value = list_resp
 
         with patch("sys.argv", ["wican", "logs", "--download", "--db", "nonexistent.db"]):
@@ -784,10 +964,19 @@ class TestCmdLogs:
             [(1735689600, 78.0), (1735689660, 79.0)], param_name="SOC_BMS"
         )
 
-        list_resp = _make_response(data={
-            "current_db": "obd.db",
-            "databases": [{"filename": "obd.db", "created": "2026-01-01T00:00:00", "size": 4096, "status": "active"}],
-        })
+        list_resp = _make_response(
+            data={
+                "current_db": "obd.db",
+                "databases": [
+                    {
+                        "filename": "obd.db",
+                        "created": "2026-01-01T00:00:00",
+                        "size": 4096,
+                        "status": "active",
+                    }
+                ],
+            }
+        )
         download_resp = _make_response(content=db_bytes)
         mock_requests_get.side_effect = [list_resp, download_resp]
 
@@ -804,10 +993,19 @@ class TestCmdLogs:
         # A file that isn't even a valid SQLite DB
         db_bytes = b"this is not a sqlite database at all" * 100
 
-        list_resp = _make_response(data={
-            "current_db": "obd.db",
-            "databases": [{"filename": "obd.db", "created": "2026-01-01T00:00:00", "size": 4096, "status": "active"}],
-        })
+        list_resp = _make_response(
+            data={
+                "current_db": "obd.db",
+                "databases": [
+                    {
+                        "filename": "obd.db",
+                        "created": "2026-01-01T00:00:00",
+                        "size": 4096,
+                        "status": "active",
+                    }
+                ],
+            }
+        )
         download_resp = _make_response(content=db_bytes)
         mock_requests_get.side_effect = [list_resp, download_resp]
 
@@ -820,14 +1018,21 @@ class TestCmdLogs:
 
     def test_logs_params_corrupt_fallback(self, mock_config, mock_requests_get, capsys):
         """logs --params still works when index is corrupt (param_info intact)."""
-        db_bytes = _make_test_db_corrupt_index(
-            [(1735689600, 78.0)], param_name="SOC_BMS"
-        )
+        db_bytes = _make_test_db_corrupt_index([(1735689600, 78.0)], param_name="SOC_BMS")
 
-        list_resp = _make_response(data={
-            "current_db": "obd.db",
-            "databases": [{"filename": "obd.db", "created": "2026-01-01T00:00:00", "size": 4096, "status": "active"}],
-        })
+        list_resp = _make_response(
+            data={
+                "current_db": "obd.db",
+                "databases": [
+                    {
+                        "filename": "obd.db",
+                        "created": "2026-01-01T00:00:00",
+                        "size": 4096,
+                        "status": "active",
+                    }
+                ],
+            }
+        )
         download_resp = _make_response(content=db_bytes)
         mock_requests_get.side_effect = [list_resp, download_resp]
 
@@ -846,13 +1051,14 @@ class TestCmdAutopid:
     """Tests for `wican autopid`."""
 
     def test_autopid_displays_values(self, mock_config, mock_requests_get, capsys):
-        """autopid shows all cached values."""
+        """autopid shows header and all cached values."""
         mock_requests_get.return_value = _make_response(data=SAMPLE_AUTOPID)
 
         with patch("sys.argv", ["wican", "autopid"]):
             main()
 
         out = capsys.readouterr().out
+        assert "AutoPID data" in out
         assert "SOC_BMS" in out
         assert "78" in out
         assert "Battery_Voltage" in out

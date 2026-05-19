@@ -13,6 +13,17 @@ from wican_cli.client import WiCANClient, WiCANError, handle_client_error
 from wican_cli.commands._common import get_client, positive_int
 
 
+def _human_size(nbytes: int) -> str:
+    """Format byte count as human-readable string (e.g. '2.3 MB')."""
+    if nbytes < 1024:
+        return f"{nbytes} B"
+    for unit in ("KB", "MB", "GB"):
+        nbytes /= 1024
+        if nbytes < 1024 or unit == "GB":
+            return f"{nbytes:.1f} {unit}"
+    return f"{nbytes:.1f} GB"
+
+
 def _get_cached_log(client: WiCANClient, filename: str, *, force: bool = False) -> Path:
     """Download a log database with local caching.
 
@@ -47,9 +58,7 @@ def _open_log_db(path: Path) -> sqlite3.Connection:
     return conn
 
 
-def _resolve_log_target(
-    client: WiCANClient, args: argparse.Namespace
-) -> tuple[str, bool] | None:
+def _resolve_log_target(client: WiCANClient, args: argparse.Namespace) -> tuple[str, bool] | None:
     """Resolve the target database filename and whether it's active.
 
     Returns (filename, is_active) or None on failure (errors are printed).
@@ -99,9 +108,9 @@ def _cmd_logs_list(client: WiCANClient, args: argparse.Namespace) -> None:
                 name = db.get("filename", "?")
                 created = db.get("created", "")
                 size = db.get("size", 0)
-                status = db.get("status", "")
-                marker = " *" if name == current else ""
-                print(f"  {name}  {created}  {size} bytes  [{status}]{marker}")
+                size_str = _human_size(size)
+                active = " (active)" if name == current else ""
+                print(f"  {name}  {created}  {size_str}{active}")
 
 
 def _cmd_logs_download(client: WiCANClient, args: argparse.Namespace) -> None:

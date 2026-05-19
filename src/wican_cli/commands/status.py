@@ -58,47 +58,65 @@ def _format_status(status: dict) -> str:
     log_period_display = _with_suffix(log_period, "s")
 
     sections: list[tuple[str, list[tuple[str, str]]]] = [
-        ("Device", [
-            ("Hardware", _get("hw_version")),
-            ("Firmware", firmware_display),
-            ("Device ID", _get("device_id")),
-            ("Uptime", _get("uptime")),
-            ("Battery", batt_display),
-        ]),
-        ("Network", [
-            ("WiFi mode", _wifi_mode(_get("wifi_mode"))),
-            ("WiFi status", _get("sta_status")),
-            ("IP address", _get("sta_ip")),
-            ("Connected SSID", _get("sta_ssid")),
-            ("mDNS", _get("mdns")),
-            ("VPN status", _get("vpn_status")),
-            ("VPN IP", _get("vpn_ip")),
-        ]),
-        ("CAN / OBD", [
-            ("Protocol", _get("protocol")),
-            ("CAN datarate", _get("can_datarate")),
-            ("CAN mode", _get("can_mode")),
-            ("OBD chip", _get("obd_chip_status")),
-            ("ECU status", _get("ecu_status")),
-        ]),
-        ("Power", [
-            ("Sleep mode", _get("sleep_status")),
-            ("Sleep voltage", sleep_volt_display),
-            ("Sleep delay", sleep_time_display),
-            ("Periodic wakeup", _get("periodic_wakeup")),
-            ("Wakeup interval", wakeup_interval_display),
-            ("Wakeup voltage", wakeup_volt_display),
-        ]),
-        ("MQTT", [
-            ("Enabled", _get("mqtt_en")),
-            ("Broker", broker_display),
-            ("Status topic", _get("mqtt_status_topic")),
-        ]),
-        ("Logging", [
-            ("SD logging", _get("logger_status")),
-            ("Period", log_period_display),
-            ("IMU threshold", _get("imu_threshold")),
-        ]),
+        (
+            "Device",
+            [
+                ("Hardware", _get("hw_version")),
+                ("Firmware", firmware_display),
+                ("Device ID", _get("device_id")),
+                ("Uptime", _get("uptime")),
+                ("Battery", batt_display),
+            ],
+        ),
+        (
+            "Network",
+            [
+                ("WiFi mode", _wifi_mode(_get("wifi_mode"))),
+                ("WiFi status", _get("sta_status")),
+                ("IP address", _get("sta_ip")),
+                ("Connected SSID", _get("sta_ssid")),
+                ("mDNS", _get("mdns")),
+                ("VPN status", _get("vpn_status")),
+                ("VPN IP", _get("vpn_ip")),
+            ],
+        ),
+        (
+            "CAN / OBD",
+            [
+                ("Protocol", _get("protocol")),
+                ("CAN datarate", _get("can_datarate")),
+                ("CAN mode", _get("can_mode")),
+                ("OBD chip", _get("obd_chip_status")),
+                ("ECU status", _get("ecu_status")),
+            ],
+        ),
+        (
+            "Power",
+            [
+                ("Sleep mode", _get("sleep_status")),
+                ("Sleep voltage", sleep_volt_display),
+                ("Sleep delay", sleep_time_display),
+                ("Periodic wakeup", _get("periodic_wakeup")),
+                ("Wakeup interval", wakeup_interval_display),
+                ("Wakeup voltage", wakeup_volt_display),
+            ],
+        ),
+        (
+            "MQTT",
+            [
+                ("Enabled", _get("mqtt_en")),
+                ("Broker", broker_display),
+                ("Status topic", _get("mqtt_status_topic")),
+            ],
+        ),
+        (
+            "Logging",
+            [
+                ("SD logging", _get("logger_status")),
+                ("Period", log_period_display),
+                ("IMU threshold", _get("imu_threshold")),
+            ],
+        ),
     ]
 
     lines: list[str] = []
