@@ -6,10 +6,10 @@ import argparse
 import json
 
 from wican_cli.client import WiCANError, handle_client_error
-from wican_cli.commands._common import get_client
+from wican_cli.commands._common import get_client_with_label
 
 
-def _format_status(status: dict) -> str:
+def _format_status(status: dict, label: str | None = None) -> str:
     """Format device status into grouped, human-readable sections."""
 
     def _get(key: str, fallback: str = "-") -> str:
@@ -26,6 +26,9 @@ def _format_status(status: dict) -> str:
         return f"{val}{suffix}"
 
     # Build computed fields
+    sta_ip = _get("sta_ip")
+    ip_display = f"{sta_ip} ({label})" if label and sta_ip != "-" else sta_ip
+
     firmware = _get("fw_version")
     git = _get("git_version", "")
     firmware_display = f"{firmware} ({git})" if git and git != "-" else firmware
@@ -76,7 +79,7 @@ def _format_status(status: dict) -> str:
             [
                 ("WiFi mode", _wifi_mode(_get("wifi_mode"))),
                 ("WiFi status", _get("sta_status")),
-                ("IP address", _get("sta_ip")),
+                ("IP address", ip_display),
                 ("mDNS", _get("mdns")),
                 ("VPN status", _get("vpn_status")),
                 ("VPN IP", _get("vpn_ip")),
@@ -126,16 +129,16 @@ def _format_status(status: dict) -> str:
         if i > 0:
             lines.append("")
         lines.append(f"  {title}")
-        max_label = max(len(label) for label, _ in fields)
-        for label, value in fields:
-            lines.append(f"    {label:<{max_label}}  {value}")
+        max_field_label = max(len(fl) for fl, _ in fields)
+        for field_label, value in fields:
+            lines.append(f"    {field_label:<{max_field_label}}  {value}")
     return "\n".join(lines)
 
 
 def cmd_status(args: argparse.Namespace) -> None:
     """Show device status summary."""
     try:
-        client = get_client(args)
+        client, label = get_client_with_label(args)
         status = client.get_status()
     except WiCANError as e:
         handle_client_error(e)
@@ -144,7 +147,7 @@ def cmd_status(args: argparse.Namespace) -> None:
     if args.json:
         print(json.dumps(status, indent=2))
     else:
-        print(_format_status(status))
+        print(_format_status(status, label=label))
 
 
 def register(subparsers: argparse._SubParsersAction) -> None:

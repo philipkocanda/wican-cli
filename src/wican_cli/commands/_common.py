@@ -83,12 +83,23 @@ def get_client(args: argparse.Namespace) -> WiCANClient:
     If --use is omitted, try the default address first, then fall through
     to other configured addresses.
     """
+    client, _ = get_client_with_label(args)
+    return client
+
+
+def get_client_with_label(args: argparse.Namespace) -> tuple[WiCANClient, str]:
+    """Like get_client(), but also returns the resolved config label.
+
+    Returns:
+        (client, label) where label is the config key used (e.g. 'home', 'vpn',
+        'ap') or the raw --use value if an explicit address was given.
+    """
     timeout = args.timeout
 
     if args.use is not None:
         # Explicit target — no fallback
         url = resolve_address(args.use)
-        return make_client(url, timeout=timeout)
+        return make_client(url, timeout=timeout), args.use
 
     # Auto-discovery: try default first, then others
     addresses, default = get_wican_addresses()
@@ -105,7 +116,7 @@ def get_client(args: argparse.Namespace) -> WiCANClient:
                     f"NOTE: '{default}' unreachable, using '{name}' ({addr})",
                     file=sys.stderr,
                 )
-            return make_client(url, timeout=timeout)
+            return make_client(url, timeout=timeout), name
 
     # Nothing reachable — fail with a helpful message listing what was tried
     tried = ", ".join(f"{k} ({addresses[k]})" for k in order)
