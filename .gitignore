@@ -7,6 +7,9 @@ dist/
 build/
 .eggs/
 
+# WiCAN cached Sqlite databases
+logs/
+
 # Virtual environments
 .venv/
 venv/

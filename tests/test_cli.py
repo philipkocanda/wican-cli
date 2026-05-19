@@ -107,6 +107,13 @@ def mock_requests_post():
         yield mock
 
 
+@pytest.fixture(autouse=True)
+def _isolate_cache(tmp_path):
+    """Redirect Path.home() to tmp_path so log cache doesn't pollute the real home."""
+    with patch("wican_cli.cli.Path.home", return_value=tmp_path):
+        yield
+
+
 def _make_response(data=None, content=None, status_code=200):
     """Create a mock response object."""
     resp = MagicMock()
@@ -525,7 +532,13 @@ class TestCmdLogs:
 
     def test_logs_list(self, mock_config, mock_requests_get, capsys):
         """logs lists available files."""
-        mock_requests_get.return_value = _make_response(data=["obd_2026-01.db", "obd_2026-02.db"])
+        mock_requests_get.return_value = _make_response(data={
+            "current_db": "obd_2026-02.db",
+            "databases": [
+                {"filename": "obd_2026-01.db", "created": "2026-01-01T00:00:00", "size": 1024, "status": "closed"},
+                {"filename": "obd_2026-02.db", "created": "2026-02-01T00:00:00", "size": 512, "status": "active"},
+            ],
+        })
 
         with patch("sys.argv", ["wican", "logs"]):
             main()
@@ -535,20 +548,26 @@ class TestCmdLogs:
         assert "obd_2026-02.db" in out
 
     def test_logs_list_json(self, mock_config, mock_requests_get, capsys):
-        """logs --json outputs file list as JSON."""
-        files = ["obd_2026-01.db", "obd_2026-02.db"]
-        mock_requests_get.return_value = _make_response(data=files)
+        """logs --json outputs full response as JSON."""
+        response_data = {
+            "current_db": "obd_2026-02.db",
+            "databases": [
+                {"filename": "obd_2026-01.db", "created": "2026-01-01T00:00:00", "size": 1024, "status": "closed"},
+                {"filename": "obd_2026-02.db", "created": "2026-02-01T00:00:00", "size": 512, "status": "active"},
+            ],
+        }
+        mock_requests_get.return_value = _make_response(data=response_data)
 
         with patch("sys.argv", ["wican", "logs", "--json"]):
             main()
 
         out = capsys.readouterr().out
         parsed = json.loads(out)
-        assert parsed == files
+        assert parsed == response_data
 
     def test_logs_list_empty(self, mock_config, mock_requests_get, capsys):
         """logs shows message when no files found."""
-        mock_requests_get.return_value = _make_response(data=[])
+        mock_requests_get.return_value = _make_response(data={"current_db": "", "databases": []})
 
         with patch("sys.argv", ["wican", "logs"]):
             main()
@@ -558,8 +577,11 @@ class TestCmdLogs:
 
     def test_logs_download(self, mock_config, mock_requests_get, capsys, tmp_path):
         """logs --download downloads files to logs/ directory."""
-        # First call: list_files, second call: download_file
-        list_resp = _make_response(data=["test.db"])
+        # First call: list_logs, second call: download_log
+        list_resp = _make_response(data={
+            "current_db": "test.db",
+            "databases": [{"filename": "test.db", "created": "2026-01-01T00:00:00", "size": 100, "status": "active"}],
+        })
         download_resp = _make_response(content=b"sqlite3 data here")
 
         mock_requests_get.side_effect = [list_resp, download_resp]
@@ -575,7 +597,10 @@ class TestCmdLogs:
 
     def test_logs_download_skip_existing(self, mock_config, mock_requests_get, capsys, tmp_path):
         """logs --download skips existing files without --force."""
-        list_resp = _make_response(data=["test.db"])
+        list_resp = _make_response(data={
+            "current_db": "test.db",
+            "databases": [{"filename": "test.db", "created": "2026-01-01T00:00:00", "size": 100, "status": "active"}],
+        })
         mock_requests_get.return_value = list_resp
 
         logs_dir = tmp_path / "logs"
@@ -591,7 +616,10 @@ class TestCmdLogs:
 
     def test_logs_download_force(self, mock_config, mock_requests_get, capsys, tmp_path):
         """logs --download --force overwrites existing files."""
-        list_resp = _make_response(data=["test.db"])
+        list_resp = _make_response(data={
+            "current_db": "test.db",
+            "databases": [{"filename": "test.db", "created": "2026-01-01T00:00:00", "size": 100, "status": "active"}],
+        })
         download_resp = _make_response(content=b"new data")
         mock_requests_get.side_effect = [list_resp, download_resp]
 
@@ -607,12 +635,15 @@ class TestCmdLogs:
 
     def test_logs_download_unsafe_path(self, mock_config, mock_requests_get, capsys, tmp_path):
         """logs --download rejects filenames with path traversal."""
-        list_resp = _make_response(data=["../evil.db"])
+        list_resp = _make_response(data={
+            "current_db": "../evil.db",
+            "databases": [{"filename": "../evil.db", "created": "2026-01-01T00:00:00", "size": 100, "status": "active"}],
+        })
         mock_requests_get.return_value = list_resp
 
         with patch("sys.argv", ["wican", "logs", "--download"]):
             with patch("wican_cli.cli.Path.cwd", return_value=tmp_path):
-                # download_file raises on path traversal, but _cmd_logs_download
+                # download_log raises on path traversal, but _cmd_logs_download
                 # also checks containment. The WiCANError from client is caught.
                 main()
 
@@ -622,10 +653,13 @@ class TestCmdLogs:
 
     def test_logs_query(self, mock_config, mock_requests_get, capsys):
         """logs --query retrieves data from a log database."""
-        # Create a real SQLite DB in memory then get its bytes
-        db_bytes = _make_test_db([("2026-01-01 10:00:00", "78"), ("2026-01-01 10:01:00", "79")])
+        # Create a real SQLite DB with the firmware schema
+        db_bytes = _make_test_db([(1735689600, 78.0), (1735689660, 79.0)])
 
-        list_resp = _make_response(data=["obd.db"])
+        list_resp = _make_response(data={
+            "current_db": "obd.db",
+            "databases": [{"filename": "obd.db", "created": "2026-01-01T00:00:00", "size": 4096, "status": "active"}],
+        })
         download_resp = _make_response(content=db_bytes)
         mock_requests_get.side_effect = [list_resp, download_resp]
 
@@ -638,9 +672,12 @@ class TestCmdLogs:
 
     def test_logs_query_json(self, mock_config, mock_requests_get, capsys):
         """logs --query --json outputs structured JSON."""
-        db_bytes = _make_test_db([("2026-01-01 10:00:00", "78")])
+        db_bytes = _make_test_db([(1735689600, 78.0)])
 
-        list_resp = _make_response(data=["obd.db"])
+        list_resp = _make_response(data={
+            "current_db": "obd.db",
+            "databases": [{"filename": "obd.db", "created": "2026-01-01T00:00:00", "size": 4096, "status": "active"}],
+        })
         download_resp = _make_response(content=db_bytes)
         mock_requests_get.side_effect = [list_resp, download_resp]
 
@@ -650,13 +687,16 @@ class TestCmdLogs:
         out = capsys.readouterr().out
         parsed = json.loads(out)
         assert len(parsed) == 1
-        assert parsed[0]["value"] == "78"
+        assert parsed[0]["value"] == 78.0
 
     def test_logs_query_no_results(self, mock_config, mock_requests_get, capsys):
         """logs --query with unknown param shows no data message."""
-        db_bytes = _make_test_db([("2026-01-01 10:00:00", "78")])
+        db_bytes = _make_test_db([(1735689600, 78.0)])
 
-        list_resp = _make_response(data=["obd.db"])
+        list_resp = _make_response(data={
+            "current_db": "obd.db",
+            "databases": [{"filename": "obd.db", "created": "2026-01-01T00:00:00", "size": 4096, "status": "active"}],
+        })
         download_resp = _make_response(content=db_bytes)
         mock_requests_get.side_effect = [list_resp, download_resp]
 
@@ -669,11 +709,14 @@ class TestCmdLogs:
     def test_logs_params(self, mock_config, mock_requests_get, capsys):
         """logs --params lists distinct parameter names."""
         db_bytes = _make_test_db(
-            [("2026-01-01 10:00:00", "78")],
-            extra_params=[("Battery_Voltage", "356.2"), ("Speed", "60")],
+            [(1735689600, 78.0)],
+            extra_params=[("Battery_Voltage", 356.2), ("Speed", 60.0)],
         )
 
-        list_resp = _make_response(data=["obd.db"])
+        list_resp = _make_response(data={
+            "current_db": "obd.db",
+            "databases": [{"filename": "obd.db", "created": "2026-01-01T00:00:00", "size": 4096, "status": "active"}],
+        })
         download_resp = _make_response(content=db_bytes)
         mock_requests_get.side_effect = [list_resp, download_resp]
 
@@ -686,9 +729,12 @@ class TestCmdLogs:
 
     def test_logs_params_json(self, mock_config, mock_requests_get, capsys):
         """logs --params --json outputs parameter list as JSON."""
-        db_bytes = _make_test_db([("2026-01-01 10:00:00", "78")])
+        db_bytes = _make_test_db([(1735689600, 78.0)])
 
-        list_resp = _make_response(data=["obd.db"])
+        list_resp = _make_response(data={
+            "current_db": "obd.db",
+            "databases": [{"filename": "obd.db", "created": "2026-01-01T00:00:00", "size": 4096, "status": "active"}],
+        })
         download_resp = _make_response(content=db_bytes)
         mock_requests_get.side_effect = [list_resp, download_resp]
 
@@ -701,10 +747,13 @@ class TestCmdLogs:
 
     def test_logs_limit(self, mock_config, mock_requests_get, capsys):
         """logs --query --limit restricts row count."""
-        rows = [(f"2026-01-01 10:{i:02d}:00", str(70 + i)) for i in range(20)]
+        rows = [(1735689600 + i * 60, 70.0 + i) for i in range(20)]
         db_bytes = _make_test_db(rows)
 
-        list_resp = _make_response(data=["obd.db"])
+        list_resp = _make_response(data={
+            "current_db": "obd.db",
+            "databases": [{"filename": "obd.db", "created": "2026-01-01T00:00:00", "size": 4096, "status": "active"}],
+        })
         download_resp = _make_response(content=db_bytes)
         mock_requests_get.side_effect = [list_resp, download_resp]
 
@@ -716,12 +765,75 @@ class TestCmdLogs:
 
     def test_logs_db_not_found(self, mock_config, mock_requests_get, capsys):
         """logs --download --db nonexistent.db exits with error."""
-        list_resp = _make_response(data=["real.db"])
+        list_resp = _make_response(data={
+            "current_db": "real.db",
+            "databases": [{"filename": "real.db", "created": "2026-01-01T00:00:00", "size": 4096, "status": "active"}],
+        })
         mock_requests_get.return_value = list_resp
 
         with patch("sys.argv", ["wican", "logs", "--download", "--db", "nonexistent.db"]):
             with pytest.raises(SystemExit, match="1"):
                 main()
+
+    def test_logs_query_corrupt_fallback(self, mock_config, mock_requests_get, capsys):
+        """logs --query falls back to unordered scan when JOIN query fails."""
+        db_bytes = _make_test_db_corrupt_index(
+            [(1735689600, 78.0), (1735689660, 79.0)], param_name="SOC_BMS"
+        )
+
+        list_resp = _make_response(data={
+            "current_db": "obd.db",
+            "databases": [{"filename": "obd.db", "created": "2026-01-01T00:00:00", "size": 4096, "status": "active"}],
+        })
+        download_resp = _make_response(content=db_bytes)
+        mock_requests_get.side_effect = [list_resp, download_resp]
+
+        with patch("sys.argv", ["wican", "logs", "--query", "SOC_BMS"]):
+            main()
+
+        captured = capsys.readouterr()
+        assert "partially corrupt" in captured.err
+        # With ORDER BY DESC, we get newest values (from the 2000 padding rows)
+        assert "199.9" in captured.out or "199.8" in captured.out
+
+    def test_logs_query_totally_corrupt(self, mock_config, mock_requests_get, capsys):
+        """logs --query exits gracefully when DB is completely unreadable."""
+        # A file that isn't even a valid SQLite DB
+        db_bytes = b"this is not a sqlite database at all" * 100
+
+        list_resp = _make_response(data={
+            "current_db": "obd.db",
+            "databases": [{"filename": "obd.db", "created": "2026-01-01T00:00:00", "size": 4096, "status": "active"}],
+        })
+        download_resp = _make_response(content=db_bytes)
+        mock_requests_get.side_effect = [list_resp, download_resp]
+
+        with patch("sys.argv", ["wican", "logs", "--query", "SOC_BMS"]):
+            with pytest.raises(SystemExit, match="1"):
+                main()
+
+        err = capsys.readouterr().err
+        assert "too corrupt" in err
+
+    def test_logs_params_corrupt_fallback(self, mock_config, mock_requests_get, capsys):
+        """logs --params still works when index is corrupt (param_info intact)."""
+        db_bytes = _make_test_db_corrupt_index(
+            [(1735689600, 78.0)], param_name="SOC_BMS"
+        )
+
+        list_resp = _make_response(data={
+            "current_db": "obd.db",
+            "databases": [{"filename": "obd.db", "created": "2026-01-01T00:00:00", "size": 4096, "status": "active"}],
+        })
+        download_resp = _make_response(content=db_bytes)
+        mock_requests_get.side_effect = [list_resp, download_resp]
+
+        with patch("sys.argv", ["wican", "logs", "--params"]):
+            main()
+
+        out = capsys.readouterr().out
+        # param_info is intact so should list the param
+        assert "SOC_BMS" in out
 
 
 # ── autopid subcommand ────────────────────────────────────────────────────────
@@ -839,26 +951,103 @@ class TestGlobalFlags:
 
 
 def _make_test_db(
-    rows: list[tuple[str, str]],
+    rows: list[tuple[int, float]],
     param_name: str = "SOC_BMS",
-    extra_params: list[tuple[str, str]] | None = None,
+    extra_params: list[tuple[str, float]] | None = None,
 ) -> bytes:
-    """Create a minimal SQLite database with obd_data table and return as bytes."""
+    """Create a minimal SQLite database with param_info/param_data tables and return as bytes.
+
+    The schema matches the actual WiCAN firmware OBD logger:
+      - param_info(Id INTEGER PK, Name VARCHAR, Type VARCHAR, Data JSON)
+      - param_data(timestamp INTEGER, param_id INTEGER, value REAL)
+    """
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
         tmp_path = tmp.name
 
     conn = sqlite3.connect(tmp_path)
-    conn.execute("CREATE TABLE obd_data (timestamp TEXT, name TEXT, value TEXT)")
+    conn.execute(
+        "CREATE TABLE param_info "
+        "(Id INTEGER PRIMARY KEY AUTOINCREMENT, Name VARCHAR(50) UNIQUE, Type VARCHAR(50), Data JSON)"
+    )
+    conn.execute("CREATE TABLE param_data (timestamp INTEGER, param_id INTEGER, value REAL)")
+
+    # Insert the primary param
+    conn.execute(
+        "INSERT INTO param_info (Name, Type, Data) VALUES (?, 'NUMERIC', '{}')", (param_name,)
+    )
+    primary_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
     for ts, val in rows:
-        conn.execute("INSERT INTO obd_data VALUES (?, ?, ?)", (ts, param_name, val))
+        conn.execute("INSERT INTO param_data VALUES (?, ?, ?)", (ts, primary_id, val))
+
+    # Insert extra params (each gets one data point at timestamp 1735689600)
     if extra_params:
         for name, val in extra_params:
             conn.execute(
-                "INSERT INTO obd_data VALUES (?, ?, ?)", ("2026-01-01 10:00:00", name, val)
+                "INSERT INTO param_info (Name, Type, Data) VALUES (?, 'NUMERIC', '{}')", (name,)
             )
+            pid = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+            conn.execute("INSERT INTO param_data VALUES (?, ?, ?)", (1735689600, pid, val))
+
     conn.commit()
     conn.close()
 
     data = Path(tmp_path).read_bytes()
     Path(tmp_path).unlink()
     return data
+
+
+def _make_test_db_corrupt_index(
+    rows: list[tuple[int, float]],
+    param_name: str = "SOC_BMS",
+) -> bytes:
+    """Create a SQLite database with a corrupt param_data index.
+
+    The param_info table and param_data leaf pages remain readable, but the
+    idx_param_data_id index is corrupted so queries using ORDER BY or the
+    index will fail, triggering the NOT INDEXED fallback path.
+
+    Page layout (4096-byte pages):
+      1: sqlite_master + header
+      2: param_info table
+      3: param_info UNIQUE index
+      4: sqlite_sequence
+      5: param_data table root
+      6: idx_param_data_id  <-- corrupted
+    """
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp:
+        tmp_path = tmp.name
+
+    conn = sqlite3.connect(tmp_path)
+    conn.execute(
+        "CREATE TABLE param_info "
+        "(Id INTEGER PRIMARY KEY AUTOINCREMENT, Name VARCHAR(50) UNIQUE, Type VARCHAR(50), Data JSON)"
+    )
+    conn.execute("CREATE TABLE param_data (timestamp INTEGER, param_id INTEGER, value REAL)")
+    conn.execute("CREATE INDEX idx_param_data_id ON param_data(param_id, timestamp)")
+
+    conn.execute(
+        "INSERT INTO param_info (Name, Type, Data) VALUES (?, 'NUMERIC', '{}')", (param_name,)
+    )
+    primary_id = conn.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    # Insert the requested rows plus padding to ensure multi-page usage
+    for ts, val in rows:
+        conn.execute("INSERT INTO param_data VALUES (?, ?, ?)", (ts, primary_id, val))
+    for i in range(2000):
+        conn.execute(
+            "INSERT INTO param_data VALUES (?, ?, ?)", (1735689600 + i, primary_id, i * 0.1)
+        )
+
+    conn.commit()
+    conn.close()
+
+    # Corrupt only the index root page (page 6) cell content area,
+    # leaving param_info (page 2) and param_data leaf pages intact.
+    data = bytearray(Path(tmp_path).read_bytes())
+    page_size = 4096
+    idx_offset = (6 - 1) * page_size
+    data[idx_offset + 8 : idx_offset + 300] = b"\xde\xad" * 146
+
+    Path(tmp_path).unlink()
+    return bytes(data)

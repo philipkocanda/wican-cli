@@ -97,33 +97,33 @@ def test_reboot_sends_post():
     )
 
 
-def test_download_file_rejects_path_traversal():
-    """download_file raises WiCANError on path traversal attempts."""
+def test_download_log_rejects_path_traversal():
+    """download_log raises WiCANError on path traversal attempts."""
     client = WiCANClient("http://192.168.80.1", timeout=5)
 
     with pytest.raises(WiCANError, match="path traversal"):
-        client.download_file("../../../etc/passwd")
+        client.download_log("../../../etc/passwd")
 
     with pytest.raises(WiCANError, match="path traversal"):
-        client.download_file("foo/bar.db")
+        client.download_log("foo/bar.db")
 
     with pytest.raises(WiCANError, match="path traversal"):
-        client.download_file("..\\windows\\system32")
+        client.download_log("..\\windows\\system32")
 
 
-def test_download_file_url_encodes_filename():
-    """download_file URL-encodes the filename parameter."""
+def test_download_log_url_encodes_filename():
+    """download_log URL-encodes the filename in the path."""
     client = WiCANClient("http://192.168.80.1", timeout=5)
     mock_resp = MagicMock()
     mock_resp.content = b"data"
     mock_resp.raise_for_status = MagicMock()
 
     with patch("requests.get", return_value=mock_resp) as mock_get:
-        result = client.download_file("log 2026-01-01.db")
+        result = client.download_log("log 2026-01-01.db")
 
     # Space should be encoded as %20
     mock_get.assert_called_once_with(
-        "http://192.168.80.1/download_file?name=log%202026-01-01.db", timeout=15
+        "http://192.168.80.1/obd_logs/log%202026-01-01.db", timeout=15
     )
     assert result == b"data"
 
@@ -164,19 +164,14 @@ def test_post_returns_none_when_timeout_expected():
     assert result is None
 
 
-def test_list_files_handles_unexpected_response():
-    """list_files returns empty list for non-list, non-dict responses."""
+def test_list_logs_returns_raw_response():
+    """list_logs returns the raw API response dict."""
     client = WiCANClient("http://192.168.80.1", timeout=5)
+    api_response = {
+        "current_db": "obd_log.db",
+        "databases": [{"filename": "obd_log.db", "created": "2026-01-01T00:00:00", "size": 1024, "status": "active"}],
+    }
 
-    with patch.object(client, "_get", return_value="unexpected"):
-        result = client.list_files()
-    assert result == []
-
-
-def test_list_files_handles_dict_response():
-    """list_files extracts files from dict response."""
-    client = WiCANClient("http://192.168.80.1", timeout=5)
-
-    with patch.object(client, "_get", return_value={"files": ["a.db", "b.db"]}):
-        result = client.list_files()
-    assert result == ["a.db", "b.db"]
+    with patch.object(client, "_get", return_value=api_response):
+        result = client.list_logs()
+    assert result == api_response

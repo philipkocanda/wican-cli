@@ -5,9 +5,9 @@ All communication with the WiCAN device happens over HTTP REST endpoints:
   - POST /store_config   — upload configuration (triggers reboot)
   - GET  /check_status   — device status summary
   - POST /system_reboot  — reboot the device
-  - GET  /list_files     — list SD card log files
-  - GET  /download_file  — download a specific file
-  - GET  /check_autopids — current AutoPID cached values
+  - GET  /obd_logs       — list OBD log databases on SD card
+  - GET  /obd_logs/<file> — download a specific log database
+  - GET  /autopid_data   — current AutoPID cached values
 
 Note: WiCAN devices only support HTTP (no TLS). Communication is
 typically over a local network or AP mode, not over the internet.
@@ -118,24 +118,24 @@ class WiCANClient:
         """Reboot the device."""
         self._post("/system_reboot", data="reboot", expect_timeout=True)
 
-    def list_files(self) -> list[str]:
-        """List available log files on the SD card."""
-        data = self._get("/list_files")
-        if isinstance(data, list):
-            return data
-        if isinstance(data, dict):
-            return data.get("files", [])
-        return []
+    def list_logs(self) -> dict:
+        """List OBD log databases on the SD card.
 
-    def download_file(self, filename: str) -> bytes:
-        """Download a file from the SD card.
+        Returns the raw API response dict with keys:
+          - current_db: filename of the currently active database
+          - databases: list of dicts with filename, created, size, status
+        """
+        return self._get("/obd_logs")
+
+    def download_log(self, filename: str) -> bytes:
+        """Download a log database from the SD card.
 
         Raises WiCANError if the filename contains path traversal sequences.
         """
         # Reject path traversal attempts
         if "/" in filename or "\\" in filename or ".." in filename:
             raise WiCANError(f"Invalid filename (path traversal rejected): {filename}")
-        url = f"{self.base_url}/download_file?name={quote(filename)}"
+        url = f"{self.base_url}/obd_logs/{quote(filename)}"
         try:
             resp = requests.get(url, timeout=self.timeout * 3)  # Large files need more time
             resp.raise_for_status()
@@ -151,7 +151,7 @@ class WiCANClient:
 
     def get_autopid_values(self) -> dict:
         """Get current AutoPID cached parameter values."""
-        return self._get("/check_autopids")
+        return self._get("/autopid_data")
 
 
 def make_client(address: str, timeout: int = 10) -> WiCANClient:
