@@ -10,7 +10,7 @@ import json
 import sqlite3
 import sys
 import tempfile
-from datetime import UTC, datetime
+from datetime import datetime
 from pathlib import Path
 
 from wican_cli.client import WiCANClient, WiCANError, handle_client_error, make_client
@@ -100,6 +100,28 @@ def _warn(msg: str) -> None:
         print(f"\033[1;33mWARNING:\033[0m {msg}", file=sys.stderr)
     else:
         print(f"WARNING: {msg}", file=sys.stderr)
+
+
+def _positive_int(value: str) -> int:
+    """Argparse type: positive integer."""
+    try:
+        n = int(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid integer value: {value!r}") from None
+    if n <= 0:
+        raise argparse.ArgumentTypeError(f"must be a positive integer, got {n}")
+    return n
+
+
+def _voltage_range(value: str) -> float:
+    """Argparse type: voltage in reasonable range (8.0-16.0 V)."""
+    try:
+        v = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"invalid float value: {value!r}") from None
+    if not (8.0 <= v <= 16.0):
+        raise argparse.ArgumentTypeError(f"voltage must be between 8.0 and 16.0, got {v}")
+    return v
 
 
 def _confirm(prompt: str) -> bool:
@@ -344,7 +366,6 @@ def cmd_protocol(args: argparse.Namespace) -> None:
 
     # Build changes
     changes: dict[str, str] = {"protocol": target}
-    port = flat.get("port", "3333")
 
     if args.port:
         changes["port"] = str(args.port)
@@ -444,7 +465,10 @@ def _cmd_logs_download(client: WiCANClient, args: argparse.Namespace) -> None:
             sys.exit(1)
 
     for filename in files:
-        dest = logs_dir / filename
+        dest = (logs_dir / filename).resolve()
+        if not dest.is_relative_to(logs_dir.resolve()):
+            print(f"  Skip {filename} (unsafe path)", file=sys.stderr)
+            continue
         if dest.exists() and not args.force:
             print(f"  Skip {filename} (exists, use --force to overwrite)")
             continue
@@ -474,6 +498,10 @@ def _cmd_logs_query(client: WiCANClient, args: argparse.Namespace) -> None:
 
     # Use specified DB or latest
     target = args.db if args.db else db_files[-1]
+    if args.db and args.db not in db_files:
+        print(f"ERROR: Database '{args.db}' not found on device.", file=sys.stderr)
+        print(f"  Available: {', '.join(db_files)}", file=sys.stderr)
+        sys.exit(1)
 
     # Download to temp file
     try:
@@ -638,11 +666,11 @@ def main() -> None:
     grp.add_argument("--enable", action="store_true", help="Enable sleep mode")
     grp.add_argument("--disable", action="store_true", help="Disable sleep mode")
     p_sleep.add_argument(
-        "--voltage", type=float, metavar="V", help="Sleep voltage threshold (e.g. 12.5)"
+        "--voltage", type=_voltage_range, metavar="V", help="Sleep voltage threshold (8.0-16.0 V)"
     )
-    p_sleep.add_argument("--time", type=int, metavar="MIN", help="Sleep delay in minutes")
+    p_sleep.add_argument("--time", type=_positive_int, metavar="MIN", help="Sleep delay in minutes")
     p_sleep.add_argument(
-        "--wakeup-interval", type=int, metavar="MIN", help="Periodic wakeup interval in minutes"
+        "--wakeup-interval", type=_positive_int, metavar="MIN", help="Periodic wakeup interval in minutes"
     )
     p_sleep.add_argument("--no-wakeup", action="store_true", help="Disable periodic wakeup")
     p_sleep.add_argument("--dry-run", action="store_true", help="Preview changes without applying")
@@ -671,7 +699,7 @@ def main() -> None:
     p_logs.add_argument("--params", action="store_true", help="List all logged parameters")
     p_logs.add_argument("--query", metavar="PARAM", help="Query a parameter (e.g. SOC_BMS)")
     p_logs.add_argument(
-        "--limit", type=int, default=10, help="Number of rows to return (default: 10)"
+        "--limit", type=_positive_int, default=10, help="Number of rows to return (default: 10)"
     )
     p_logs.add_argument("--json", action="store_true", help="JSON output")
     p_logs.set_defaults(func=cmd_logs)

@@ -4,7 +4,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from wican_cli.client import ConnectionFailed, RequestTimeout, WiCANClient, make_client
+from wican_cli.client import (
+    ConnectionFailed,
+    DeviceError,
+    RequestTimeout,
+    WiCANClient,
+    WiCANError,
+    make_client,
+)
 
 
 def test_make_client_adds_scheme():
@@ -88,3 +95,88 @@ def test_reboot_sends_post():
     mock_post.assert_called_once_with(
         "http://192.168.80.1/system_reboot", data="reboot", json=None, timeout=5
     )
+
+
+def test_download_file_rejects_path_traversal():
+    """download_file raises WiCANError on path traversal attempts."""
+    client = WiCANClient("http://192.168.80.1", timeout=5)
+
+    with pytest.raises(WiCANError, match="path traversal"):
+        client.download_file("../../../etc/passwd")
+
+    with pytest.raises(WiCANError, match="path traversal"):
+        client.download_file("foo/bar.db")
+
+    with pytest.raises(WiCANError, match="path traversal"):
+        client.download_file("..\\windows\\system32")
+
+
+def test_download_file_url_encodes_filename():
+    """download_file URL-encodes the filename parameter."""
+    client = WiCANClient("http://192.168.80.1", timeout=5)
+    mock_resp = MagicMock()
+    mock_resp.content = b"data"
+    mock_resp.raise_for_status = MagicMock()
+
+    with patch("requests.get", return_value=mock_resp) as mock_get:
+        result = client.download_file("log 2026-01-01.db")
+
+    # Space should be encoded as %20
+    mock_get.assert_called_once_with(
+        "http://192.168.80.1/download_file?name=log%202026-01-01.db", timeout=15
+    )
+    assert result == b"data"
+
+
+def test_get_raises_device_error_on_http_error():
+    """_get wraps HTTPError into DeviceError."""
+    import requests
+
+    client = WiCANClient("http://192.168.80.1", timeout=5)
+    mock_resp = MagicMock()
+    mock_resp.status_code = 500
+    mock_resp.raise_for_status.side_effect = requests.HTTPError(response=mock_resp)
+
+    with patch("requests.get", return_value=mock_resp):
+        with pytest.raises(DeviceError):
+            client.get_config()
+
+
+def test_post_raises_timeout_when_not_expected():
+    """_post raises RequestTimeout when expect_timeout is False."""
+    import requests
+
+    client = WiCANClient("http://192.168.80.1", timeout=5)
+
+    with patch("requests.post", side_effect=requests.Timeout()):
+        with pytest.raises(RequestTimeout):
+            client._post("/some_path", expect_timeout=False)
+
+
+def test_post_returns_none_when_timeout_expected():
+    """_post returns None when timeout occurs and expect_timeout is True."""
+    import requests
+
+    client = WiCANClient("http://192.168.80.1", timeout=5)
+
+    with patch("requests.post", side_effect=requests.Timeout()):
+        result = client._post("/store_config", expect_timeout=True)
+    assert result is None
+
+
+def test_list_files_handles_unexpected_response():
+    """list_files returns empty list for non-list, non-dict responses."""
+    client = WiCANClient("http://192.168.80.1", timeout=5)
+
+    with patch.object(client, "_get", return_value="unexpected"):
+        result = client.list_files()
+    assert result == []
+
+
+def test_list_files_handles_dict_response():
+    """list_files extracts files from dict response."""
+    client = WiCANClient("http://192.168.80.1", timeout=5)
+
+    with patch.object(client, "_get", return_value={"files": ["a.db", "b.db"]}):
+        result = client.list_files()
+    assert result == ["a.db", "b.db"]

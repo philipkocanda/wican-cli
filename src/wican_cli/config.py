@@ -42,12 +42,18 @@ def load_config() -> dict:
     """Load configuration from file or return empty dict.
 
     Returns the parsed YAML dict, or {} if no config file exists.
+    Raises ValueError if the file content is not a dict.
     """
     path = find_config_file()
     if path is None:
         return {}
     with open(path) as f:
-        return yaml.safe_load(f) or {}
+        data = yaml.safe_load(f)
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        raise ValueError(f"Invalid config format in {path}: expected a YAML mapping, got {type(data).__name__}")
+    return data
 
 
 def get_wican_addresses() -> tuple[dict[str, str], str]:
@@ -63,6 +69,10 @@ def get_wican_addresses() -> tuple[dict[str, str], str]:
 
     cfg = load_config()
     addresses = cfg.get("wican_addresses", {"ap": DEFAULT_AP_ADDRESS})
+    if not isinstance(addresses, dict):
+        raise ValueError(
+            f"Invalid config: 'wican_addresses' must be a mapping, got {type(addresses).__name__}"
+        )
     default = cfg.get("default_wican", next(iter(addresses)))
     # Ensure all values are plain strings (no scheme prefix — callers add it)
     addresses = {k: str(v).rstrip("/") for k, v in addresses.items()}

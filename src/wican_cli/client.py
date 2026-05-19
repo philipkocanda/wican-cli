@@ -8,12 +8,16 @@ All communication with the WiCAN device happens over HTTP REST endpoints:
   - GET  /list_files     — list SD card log files
   - GET  /download_file  — download a specific file
   - GET  /check_autopids — current AutoPID cached values
+
+Note: WiCAN devices only support HTTP (no TLS). Communication is
+typically over a local network or AP mode, not over the internet.
 """
 
 from __future__ import annotations
 
 import sys
-from typing import Any
+from typing import Any, NoReturn
+from urllib.parse import quote
 
 import requests
 
@@ -28,6 +32,10 @@ class ConnectionFailed(WiCANError):
 
 class RequestTimeout(WiCANError):
     """Request timed out."""
+
+
+class DeviceError(WiCANError):
+    """Device returned an HTTP error status."""
 
 
 class WiCANClient:
@@ -52,26 +60,51 @@ class WiCANClient:
             resp = requests.get(url, timeout=self.timeout)
             resp.raise_for_status()
             return resp.json()
-        except requests.ConnectionError:
+        except requests.ConnectionError as e:
             raise ConnectionFailed(
                 f"Cannot connect to WiCAN at {self.base_url}\n"
                 "  Is the device powered on and reachable?"
-            )
-        except requests.Timeout:
-            raise RequestTimeout(f"Timeout connecting to {self.base_url}")
+            ) from e
+        except requests.Timeout as e:
+            raise RequestTimeout(f"Timeout connecting to {self.base_url}") from e
+        except requests.HTTPError as e:
+            raise DeviceError(
+                f"Device returned error: {e.response.status_code} on {path}"
+            ) from e
 
-    def _post(self, path: str, data: Any = None, json: Any = None) -> requests.Response | None:
-        """Perform a POST request. Returns response or None on expected timeout."""
+    def _post(
+        self,
+        path: str,
+        data: Any = None,
+        json: Any = None,
+        *,
+        expect_timeout: bool = False,
+    ) -> requests.Response | None:
+        """Perform a POST request.
+
+        Parameters
+        ----------
+        expect_timeout : bool
+            If True, a timeout is treated as success (device rebooted).
+            If False, a timeout raises RequestTimeout.
+        """
         url = f"{self.base_url}{path}"
         try:
             resp = requests.post(url, data=data, json=json, timeout=self.timeout)
             resp.raise_for_status()
             return resp
-        except requests.ConnectionError:
-            raise ConnectionFailed(f"Cannot connect to WiCAN at {self.base_url}")
-        except requests.Timeout:
-            # Expected for operations that trigger a reboot
-            return None
+        except requests.ConnectionError as e:
+            if expect_timeout:
+                return None
+            raise ConnectionFailed(f"Cannot connect to WiCAN at {self.base_url}") from e
+        except requests.Timeout as e:
+            if expect_timeout:
+                return None
+            raise RequestTimeout(f"Timeout on POST to {self.base_url}{path}") from e
+        except requests.HTTPError as e:
+            raise DeviceError(
+                f"Device returned error: {e.response.status_code} on {path}"
+            ) from e
 
     def get_config(self) -> dict:
         """Download the full device configuration."""
@@ -79,7 +112,7 @@ class WiCANClient:
 
     def store_config(self, config: dict) -> None:
         """Upload configuration to the device. Triggers an automatic reboot."""
-        self._post("/store_config", json=config)
+        self._post("/store_config", json=config, expect_timeout=True)
 
     def get_status(self) -> dict:
         """Get device status summary."""
@@ -87,27 +120,38 @@ class WiCANClient:
 
     def reboot(self) -> None:
         """Reboot the device."""
-        self._post("/system_reboot", data="reboot")
+        self._post("/system_reboot", data="reboot", expect_timeout=True)
 
     def list_files(self) -> list[str]:
         """List available log files on the SD card."""
         data = self._get("/list_files")
         if isinstance(data, list):
             return data
-        # Some firmware versions return {"files": [...]}
-        return data.get("files", [])
+        if isinstance(data, dict):
+            return data.get("files", [])
+        return []
 
     def download_file(self, filename: str) -> bytes:
-        """Download a file from the SD card."""
-        url = f"{self.base_url}/download_file?name={filename}"
+        """Download a file from the SD card.
+
+        Raises WiCANError if the filename contains path traversal sequences.
+        """
+        # Reject path traversal attempts
+        if "/" in filename or "\\" in filename or ".." in filename:
+            raise WiCANError(f"Invalid filename (path traversal rejected): {filename}")
+        url = f"{self.base_url}/download_file?name={quote(filename)}"
         try:
             resp = requests.get(url, timeout=self.timeout * 3)  # Large files need more time
             resp.raise_for_status()
             return resp.content
-        except requests.ConnectionError:
-            raise ConnectionFailed(f"Cannot connect to WiCAN at {self.base_url}")
-        except requests.Timeout:
-            raise RequestTimeout(f"Timeout downloading {filename}")
+        except requests.ConnectionError as e:
+            raise ConnectionFailed(f"Cannot connect to WiCAN at {self.base_url}") from e
+        except requests.Timeout as e:
+            raise RequestTimeout(f"Timeout downloading {filename}") from e
+        except requests.HTTPError as e:
+            raise DeviceError(
+                f"Device returned error {e.response.status_code} downloading {filename}"
+            ) from e
 
     def get_autopid_values(self) -> dict:
         """Get current AutoPID cached parameter values."""
@@ -121,7 +165,7 @@ def make_client(address: str, timeout: int = 10) -> WiCANClient:
     return WiCANClient(address, timeout=timeout)
 
 
-def handle_client_error(e: WiCANError) -> None:
+def handle_client_error(e: WiCANError) -> NoReturn:
     """Print a user-friendly error message and exit."""
     print(f"ERROR: {e}", file=sys.stderr)
     sys.exit(1)
