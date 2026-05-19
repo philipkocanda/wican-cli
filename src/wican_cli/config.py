@@ -2,7 +2,7 @@
 
 Config search order:
   1. WICAN_URL environment variable (overrides all file-based config)
-  2. ./wican-cli.yaml (project-local)
+  2. ./config.yaml (project-local)
   3. ~/.config/wican-cli/config.yaml (user-global, XDG-compliant)
 
 If none found, defaults to WiCAN AP mode address (192.168.80.1).
@@ -19,7 +19,7 @@ import yaml
 DEFAULT_AP_ADDRESS = "192.168.80.1"
 
 # Config file name for project-local config.
-LOCAL_CONFIG_NAME = "wican-cli.yaml"
+LOCAL_CONFIG_NAME = "config.yaml"
 
 # XDG-compliant user config path.
 _xdg_config = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))

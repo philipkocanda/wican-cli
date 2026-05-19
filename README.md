@@ -78,7 +78,7 @@ wican autopid -f tyre
 wican-cli looks for configuration in this order:
 
 1. `WICAN_URL` environment variable (overrides everything)
-2. `./wican-cli.yaml` (project-local)
+2. `./config.yaml` (project-local)
 3. `~/.config/wican-cli/config.yaml` (user-global)
 
 If none is found, it defaults to `192.168.80.1` (WiCAN's built-in AP).

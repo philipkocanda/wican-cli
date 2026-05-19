@@ -31,7 +31,7 @@ htmlcov/
 .pytest_cache/
 
 # Config (user-specific)
-wican-cli.yaml
+config.yaml
 
 # uv
 uv.lock

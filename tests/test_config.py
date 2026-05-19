@@ -55,7 +55,7 @@ def test_load_config_returns_empty_when_missing():
 
 def test_load_config_parses_yaml(tmp_path):
     """Parses a valid YAML config file."""
-    config_file = tmp_path / "wican-cli.yaml"
+    config_file = tmp_path / "config.yaml"
     config_file.write_text("wican_addresses:\n  home: '10.0.2.86'\ndefault_wican: home\n")
     with patch("wican_cli.config.find_config_file", return_value=config_file):
         result = load_config()
@@ -65,7 +65,7 @@ def test_load_config_parses_yaml(tmp_path):
 
 def test_load_config_rejects_non_dict(tmp_path):
     """Raises ValueError when config file is not a YAML mapping."""
-    config_file = tmp_path / "wican-cli.yaml"
+    config_file = tmp_path / "config.yaml"
     config_file.write_text("- just\n- a\n- list\n")
     with patch("wican_cli.config.find_config_file", return_value=config_file):
         with pytest.raises(ValueError, match="expected a YAML mapping"):
@@ -74,7 +74,7 @@ def test_load_config_rejects_non_dict(tmp_path):
 
 def test_load_config_handles_empty_file(tmp_path):
     """Returns empty dict for an empty YAML file."""
-    config_file = tmp_path / "wican-cli.yaml"
+    config_file = tmp_path / "config.yaml"
     config_file.write_text("")
     with patch("wican_cli.config.find_config_file", return_value=config_file):
         result = load_config()
@@ -83,7 +83,7 @@ def test_load_config_handles_empty_file(tmp_path):
 
 def test_get_wican_addresses_rejects_non_dict_addresses(tmp_path):
     """Raises ValueError when wican_addresses is not a mapping."""
-    config_file = tmp_path / "wican-cli.yaml"
+    config_file = tmp_path / "config.yaml"
     config_file.write_text("wican_addresses: just_a_string\n")
     with patch("wican_cli.config.find_config_file", return_value=config_file):
         with pytest.raises(ValueError, match="must be a mapping"):

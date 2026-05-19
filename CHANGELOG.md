@@ -5,6 +5,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Renamed project-local config file from `wican-cli.yaml` to `config.yaml`
+
+### Fixed
+
+- CI: dev dependencies (pytest, ruff) not installed during workflow runs
+
 ## [0.1.0] - 2026-05-19
 
 ### Added
@@ -23,7 +33,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `--params` lists all logged parameter names
 - `wican autopid` — show latest AutoPID cached values with optional filter
 - `wican reboot` — reboot the device
-- Configuration file support: `WICAN_URL` env var, `./wican-cli.yaml`, `~/.config/wican-cli/config.yaml`
+- Configuration file support: `WICAN_URL` env var, `./config.yaml`, `~/.config/wican-cli/config.yaml`
 - Named device aliases (`--wican home`, `--wican vpn`, etc.)
 - Path traversal protection on file downloads
 - Input validation for voltage, time, and limit parameters
