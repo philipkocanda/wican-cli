@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-05-19
+
+### Added
+
+- Automatic address fallback: when default device is unreachable, probes other configured addresses
+- Config validation: `default_wican` must reference an existing key in `wican_addresses`
+
+### Changed
+
+- Renamed `--wican` global flag to `--use` for clarity
+- `--use` is now optional — omitting it triggers auto-discovery with fallback
+
+### Fixed
+
+- Double `mqtt://` prefix in MQTT Broker status display when firmware URL already includes scheme
+
 ## [0.2.0] - 2026-05-19
 
 ### Added

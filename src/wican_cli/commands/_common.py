@@ -5,10 +5,13 @@ from __future__ import annotations
 import argparse
 import sys
 
-from wican_cli.client import WiCANClient, make_client
+import requests
+
+from wican_cli.client import ConnectionFailed, WiCANClient, make_client
 from wican_cli.config import get_wican_addresses
 
 DEFAULT_TIMEOUT = 10  # seconds
+_PROBE_TIMEOUT = 2  # seconds — quick reachability check
 
 
 def warn(msg: str) -> None:
@@ -52,22 +55,61 @@ def confirm(prompt: str) -> bool:
         return False
 
 
-def resolve_address(wican_arg: str) -> str:
-    """Resolve a --wican argument to a base URL."""
+def resolve_address(name: str) -> str:
+    """Resolve a named address to a base URL (no fallback)."""
     addresses, _ = get_wican_addresses()
-    if wican_arg in addresses:
-        addr = addresses[wican_arg]
+    if name in addresses:
+        addr = addresses[name]
     else:
-        addr = wican_arg
+        addr = name
     if not addr.startswith(("http://", "https://")):
         return f"http://{addr}"
     return addr
 
 
+def _is_reachable(url: str) -> bool:
+    """Quick probe to check if a WiCAN device responds at the given URL."""
+    try:
+        requests.get(f"{url}/check_status", timeout=_PROBE_TIMEOUT)
+        return True
+    except (requests.ConnectionError, requests.Timeout):
+        return False
+
+
 def get_client(args: argparse.Namespace) -> WiCANClient:
-    """Create a WiCANClient from parsed CLI arguments."""
-    url = resolve_address(args.wican)
-    return make_client(url, timeout=args.timeout)
+    """Create a WiCANClient from parsed CLI arguments.
+
+    If --use is explicit, connect to that address only (fail hard).
+    If --use is omitted, try the default address first, then fall through
+    to other configured addresses.
+    """
+    timeout = args.timeout
+
+    if args.use is not None:
+        # Explicit target — no fallback
+        url = resolve_address(args.use)
+        return make_client(url, timeout=timeout)
+
+    # Auto-discovery: try default first, then others
+    addresses, default = get_wican_addresses()
+
+    # Build ordered list: default first, then the rest
+    order = [default] + [k for k in addresses if k != default]
+
+    for name in order:
+        addr = addresses[name]
+        url = f"http://{addr}" if not addr.startswith(("http://", "https://")) else addr
+        if _is_reachable(url):
+            if name != default:
+                print(
+                    f"NOTE: '{default}' unreachable, using '{name}' ({addr})",
+                    file=sys.stderr,
+                )
+            return make_client(url, timeout=timeout)
+
+    # Nothing reachable — fail with a helpful message listing what was tried
+    tried = ", ".join(f"{k} ({addresses[k]})" for k in order)
+    raise ConnectionFailed(f"Cannot reach any configured WiCAN device.\n  Tried: {tried}")
 
 
 def flatten_config(config: dict) -> dict:

@@ -11,7 +11,6 @@ from wican_cli.commands._common import (
     flatten_config,
     get_client,
     positive_int,
-    resolve_address,
     voltage_range,
 )
 
@@ -104,9 +103,8 @@ def cmd_sleep(args: argparse.Namespace) -> None:
         return
 
     # Confirm and apply
-    base_url = resolve_address(args.wican)
     if not args.json:
-        print(f"\nSaving config will reboot the device ({base_url})")
+        print(f"\nSaving config will reboot the device ({client.base_url})")
     if not args.yes and not confirm("Apply changes?"):
         print("Aborted.")
         return

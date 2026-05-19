@@ -88,3 +88,12 @@ def test_get_wican_addresses_rejects_non_dict_addresses(tmp_path):
     with patch("wican_cli.config.find_config_file", return_value=config_file):
         with pytest.raises(ValueError, match="must be a mapping"):
             get_wican_addresses()
+
+
+def test_get_wican_addresses_rejects_dangling_default(tmp_path):
+    """Raises ValueError when default_wican references a missing key."""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("wican_addresses:\n  home: '10.0.2.86'\ndefault_wican: typo_key\n")
+    with patch("wican_cli.config.find_config_file", return_value=config_file):
+        with pytest.raises(ValueError, match="not found in wican_addresses"):
+            get_wican_addresses()

@@ -92,6 +92,7 @@ def mock_config():
     with (
         patch("wican_cli.cli.get_wican_addresses", return_value=ret),
         patch("wican_cli.commands._common.get_wican_addresses", return_value=ret) as mock,
+        patch("wican_cli.commands._common._is_reachable", return_value=True),
     ):
         yield mock
 
@@ -291,6 +292,18 @@ class TestCmdStatus:
         assert "5 min" in out
         assert "120 min" in out
         assert "60s" in out
+
+    def test_status_mqtt_url_with_scheme(self, mock_config, mock_requests_get, capsys):
+        """status does not double-prefix mqtt:// when url already has scheme."""
+        status = {**SAMPLE_STATUS, "mqtt_url": "mqtt://10.0.1.114"}
+        mock_requests_get.return_value = _make_response(data=status)
+
+        with patch("sys.argv", ["wican", "status"]):
+            main()
+
+        out = capsys.readouterr().out
+        assert "mqtt://10.0.1.114:1883" in out
+        assert "mqtt://mqtt://" not in out
 
     def test_status_json_output(self, mock_config, mock_requests_get, capsys):
         """status --json outputs valid JSON."""
@@ -1123,10 +1136,10 @@ class TestGlobalFlags:
         assert "0.1.0" in out
 
     def test_custom_wican_address(self, mock_config, mock_requests_get, capsys):
-        """--wican passes custom address to client."""
+        """--use passes custom address to client."""
         mock_requests_get.return_value = _make_response(data=SAMPLE_STATUS)
 
-        with patch("sys.argv", ["wican", "--wican", "10.0.0.99", "status"]):
+        with patch("sys.argv", ["wican", "--use", "10.0.0.99", "status"]):
             main()
 
         # Verify the request was made to the custom address
@@ -1144,7 +1157,7 @@ class TestGlobalFlags:
         assert call_kwargs["timeout"] == 30
 
     def test_named_address_resolution(self, mock_requests_get, capsys):
-        """--wican home resolves to configured address."""
+        """--use home resolves to configured address."""
         ret = ({"home": "192.168.1.100", "ap": "192.168.80.1"}, "home")
         with (
             patch("wican_cli.cli.get_wican_addresses", return_value=ret),
@@ -1152,11 +1165,45 @@ class TestGlobalFlags:
         ):
             mock_requests_get.return_value = _make_response(data=SAMPLE_STATUS)
 
-            with patch("sys.argv", ["wican", "--wican", "home", "status"]):
+            with patch("sys.argv", ["wican", "--use", "home", "status"]):
                 main()
 
         call_url = mock_requests_get.call_args[0][0]
         assert "192.168.1.100" in call_url
+
+    def test_fallback_to_second_address(self, mock_requests_get, capsys):
+        """When default address is unreachable, falls back to next configured address."""
+        ret = ({"home": "192.168.1.100", "vpn": "192.168.3.2"}, "home")
+        with (
+            patch("wican_cli.cli.get_wican_addresses", return_value=ret),
+            patch("wican_cli.commands._common.get_wican_addresses", return_value=ret),
+            patch(
+                "wican_cli.commands._common._is_reachable",
+                side_effect=lambda url: "192.168.3.2" in url,
+            ),
+        ):
+            mock_requests_get.return_value = _make_response(data=SAMPLE_STATUS)
+
+            with patch("sys.argv", ["wican", "status"]):
+                main()
+
+        err = capsys.readouterr().err
+        assert "home" in err and "vpn" in err  # NOTE message about fallback
+        call_url = mock_requests_get.call_args[0][0]
+        assert "192.168.3.2" in call_url
+
+    def test_no_fallback_when_use_explicit(self, mock_config, mock_requests_get, capsys):
+        """--use with unreachable address fails hard, no fallback."""
+        from requests import ConnectionError as ReqConnError
+
+        mock_requests_get.side_effect = ReqConnError("connection refused")
+
+        with patch("sys.argv", ["wican", "--use", "10.0.0.99", "status"]):
+            with pytest.raises(SystemExit):
+                main()
+
+        err = capsys.readouterr().err
+        assert "Cannot connect" in err
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

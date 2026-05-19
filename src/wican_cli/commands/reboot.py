@@ -5,19 +5,23 @@ from __future__ import annotations
 import argparse
 
 from wican_cli.client import WiCANError, handle_client_error
-from wican_cli.commands._common import confirm, get_client, resolve_address
+from wican_cli.commands._common import confirm, get_client
 
 
 def cmd_reboot(args: argparse.Namespace) -> None:
     """Reboot the WiCAN device."""
-    base_url = resolve_address(args.wican)
-    print(f"Rebooting WiCAN at {base_url}")
+    try:
+        client = get_client(args)
+    except WiCANError as e:
+        handle_client_error(e)
+        return
+
+    print(f"Rebooting WiCAN at {client.base_url}")
     if not args.yes and not confirm("Continue?"):
         print("Aborted.")
         return
 
     try:
-        client = get_client(args)
         client.reboot()
     except WiCANError as e:
         handle_client_error(e)

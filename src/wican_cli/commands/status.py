@@ -33,7 +33,10 @@ def _format_status(status: dict) -> str:
     mqtt_url = _get("mqtt_url", "")
     mqtt_port = _get("mqtt_port", "")
     if mqtt_url and mqtt_port:
-        broker_display = f"mqtt://{mqtt_url}:{mqtt_port}"
+        if "://" in mqtt_url:
+            broker_display = f"{mqtt_url}:{mqtt_port}"
+        else:
+            broker_display = f"mqtt://{mqtt_url}:{mqtt_port}"
     elif mqtt_url:
         broker_display = mqtt_url
     else:

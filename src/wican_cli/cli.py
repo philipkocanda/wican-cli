@@ -16,7 +16,13 @@ from wican_cli.config import get_wican_addresses
 
 def main() -> None:
     """CLI entry point."""
-    addresses, default = get_wican_addresses()
+    try:
+        addresses, default = get_wican_addresses()
+    except ValueError as e:
+        import sys
+
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
 
     parser = argparse.ArgumentParser(
         prog="wican",
@@ -24,8 +30,8 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument(
-        "--wican",
-        default=default,
+        "--use",
+        default=None,
         metavar="ADDR",
         help=f"Device address: {', '.join(addresses.keys())} or IP/URL (default: {default})",
     )

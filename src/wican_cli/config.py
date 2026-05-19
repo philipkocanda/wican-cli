@@ -78,4 +78,9 @@ def get_wican_addresses() -> tuple[dict[str, str], str]:
     default = cfg.get("default_wican", next(iter(addresses)))
     # Ensure all values are plain strings (no scheme prefix — callers add it)
     addresses = {k: str(v).rstrip("/") for k, v in addresses.items()}
+    if default not in addresses:
+        raise ValueError(
+            f"Invalid config: default_wican '{default}' not found in wican_addresses "
+            f"(available: {', '.join(addresses.keys())})"
+        )
     return addresses, default
