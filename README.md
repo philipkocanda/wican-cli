@@ -12,14 +12,17 @@ View and save device configuration, toggle sleep mode, switch protocol modes, qu
 
 ## Installation
 
-```bash
-pip install wican-cli
-```
 
-Or with [uv](https://docs.astral.sh/uv/):
+Install with [uv](https://docs.astral.sh/uv/) (recommended):
 
 ```bash
 uv tool install wican-cli
+```
+
+Or install with pip:
+
+```bash
+pip install wican-cli
 ```
 
 ## Quick start
